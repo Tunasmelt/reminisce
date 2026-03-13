@@ -1,0 +1,15 @@
+
+> reminisce@0.1.0 lint
+> next lint
+
+
+./app/dashboard/page.tsx
+7:10  Error: 'Plus' is defined but never used.  @typescript-eslint/no-unused-vars
+16:48  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+17:44  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+67:6  Warning: React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./components/auth-provider.tsx
+10:9  Error: 'router' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules
