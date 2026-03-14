@@ -43,25 +43,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           height: 56,
           background: 'rgba(0,0,0,0.85)',
           backdropFilter: 'blur(20px)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          boxShadow: '0 1px 0 rgba(255,255,255,0.04)',
           padding: isMobile ? '0 16px' : '0 32px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
           {/* Left: Logo */}
-          <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Star size={14} fill={accent} stroke={accent} />
-            <span style={{ 
-              fontSize: 13, 
-              fontWeight: 800, 
-              letterSpacing: '0.15em', 
-              textTransform: 'uppercase', 
-              color: '#fff' 
-            }}>
-              {isMobile ? '★' : 'REMINISCE'}
-            </span>
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+            <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Star size={14} fill={accent} stroke={accent} />
+              <span style={{ 
+                fontSize: 14, 
+                fontWeight: 700, 
+                letterSpacing: '0.01em', 
+                color: '#fff' 
+              }}>
+                {isMobile ? '★' : 'Reminisce'}
+              </span>
+            </Link>
+
+            {!isMobile && (
+              <Link href="/dashboard/templates" style={{ 
+                textDecoration: 'none',
+                fontSize: 12,
+                fontWeight: 500,
+                letterSpacing: '0.01em',
+                color: 'rgba(255,255,255,0.4)',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = accent}
+              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+              >
+                Templates
+              </Link>
+            )}
+          </div>
 
           {/* Right: Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 16 }}>
@@ -90,10 +107,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: 6,
                 padding: isMobile ? '6px' : '6px 12px',
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
+                fontSize: 12,
+                fontWeight: 500,
                 color: 'rgba(255,255,255,0.4)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
@@ -110,7 +125,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
               }}
             >
-              {isMobile ? <LogOut size={14} /> : 'Sign Out'}
+              {isMobile ? <LogOut size={14} /> : 'Sign out'}
             </button>
           </div>
         </header>

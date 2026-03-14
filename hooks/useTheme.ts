@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { useThemeStore } from '@/store/theme'
 
 export const THEME_COLORS: Record<string, string> = {
   'solar-flare':    '#f59e0b',
@@ -29,40 +30,30 @@ export const themes = [
 ]
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'solar-flare'
-    return document.documentElement
-      .getAttribute('data-theme') || 'solar-flare'
-  })
-
-  const [hasChosen, setHasChosen] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true
-    return localStorage.getItem('reminisce-theme-chosen') === 'true'
-  })
+  const { theme, hasChosen, setTheme, setHasChosen } = useThemeStore()
 
   const applyTheme = (id: string, isFirstChoice = false) => {
-    setThemeState(id)
-    localStorage.setItem('reminisce-theme', id)
-    document.documentElement.setAttribute('data-theme', id)
+    setTheme(id)
     if (isFirstChoice) {
-      localStorage.setItem('reminisce-theme-chosen', 'true')
       setHasChosen(true)
     }
   }
 
+  // Cross-tab synchronization
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'reminisce-theme' && e.newValue) {
-        setThemeState(e.newValue)
-        document.documentElement
-          .setAttribute('data-theme', e.newValue)
+        setTheme(e.newValue)
+      }
+      if (e.key === 'reminisce-theme-chosen' && e.newValue) {
+        setHasChosen(e.newValue === 'true')
       }
     }
     window.addEventListener('storage', handleStorage)
     return () => window.removeEventListener('storage', handleStorage)
-  }, [])
+  }, [setTheme, setHasChosen])
 
-  const accent = THEME_COLORS[theme] || '#f59e0b'
+  const accent = useMemo(() => THEME_COLORS[theme] || '#f59e0b', [theme])
 
   return { theme, accent, hasChosen, applyTheme, themes }
 }

@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/hooks/useTheme'
+import CustomSelect from '@/components/CustomSelect'
 
 interface ProjectStats {
   id: string
@@ -174,14 +175,14 @@ export default function DashboardPage() {
         gap: isMobile ? 32 : 0
       }}>
         <div>
-          <div style={{ fontSize: 10, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', marginBottom: 12, textTransform: 'uppercase' }}>
-            COMMAND CENTER
+          <div style={{ fontSize: 11, letterSpacing: '0.05em', color: 'rgba(255,255,255,0.25)', marginBottom: 12, textTransform: 'uppercase' }}>
+            Your workspace
           </div>
-          <h1 style={{ fontSize: isMobile ? 40 : 'clamp(40px, 5vw, 64px)', fontWeight: 900, letterSpacing: '-0.03em', color: '#fff', lineHeight: 1, margin: 0 }}>
-            Your Workspace.
+          <h1 style={{ fontSize: isMobile ? 40 : 'clamp(40px, 5vw, 64px)', fontWeight: 800, letterSpacing: '-0.02em', color: '#fff', lineHeight: 1, margin: 0 }}>
+            Projects
           </h1>
-          <div style={{ fontSize: 11, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.2)', marginTop: 12, textTransform: 'uppercase' }}>
-            {isMobile ? 'ARCHITECTURAL ORCHESTRATION.' : 'ARCHITECTURAL ORCHESTRATION OF MISSION-CRITICAL ENGINEERING CYCLES.'}
+          <div style={{ fontSize: 13, letterSpacing: '0.02em', color: 'rgba(255,255,255,0.3)', marginTop: 12 }}>
+            AI-powered context for every project.
           </div>
         </div>
         <button 
@@ -192,10 +193,9 @@ export default function DashboardPage() {
             background: accent,
             borderRadius: 999,
             padding: '12px 24px',
-            fontSize: 11,
-            fontWeight: 800,
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: '0.02em',
             color: '#000',
             display: 'flex',
             alignItems: 'center',
@@ -214,7 +214,7 @@ export default function DashboardPage() {
             e.currentTarget.style.transform = 'scale(1)'
           }}
         >
-          <Rocket size={14} /> INITIALIZE_NEW_DOMAIN
+          <Rocket size={14} /> New project
         </button>
       </section>
 
@@ -230,10 +230,9 @@ export default function DashboardPage() {
           onClick={() => setSelectedWS('all')}
           style={{
             padding: '10px 20px',
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
+            fontSize: 12,
+            fontWeight: 500,
+            letterSpacing: 'normal',
             cursor: 'pointer',
             border: 'none',
             background: 'transparent',
@@ -244,7 +243,7 @@ export default function DashboardPage() {
             minWidth: 'max-content'
           }}
         >
-          ALL_DOMAINS
+          All
         </button>
         {workspaces.map(w => (
           <button
@@ -252,10 +251,9 @@ export default function DashboardPage() {
             onClick={() => setSelectedWS(w.id)}
             style={{
               padding: '10px 20px',
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: 'normal',
               cursor: 'pointer',
               border: 'none',
               background: 'transparent',
@@ -306,38 +304,43 @@ export default function DashboardPage() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: '0.15em',
-                  textTransform: 'uppercase',
+                  fontSize: 10,
+                  fontWeight: 500,
+                  letterSpacing: 'normal',
                   padding: '4px 10px',
                   borderRadius: 999,
                   background: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   color: 'rgba(255,255,255,0.5)'
                 }}>
-                  {p.workspaces?.name || 'UNASSIGNED'}
+                  {p.workspaces?.name || 'General'}
                 </div>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: accent }} />
               </div>
 
-              <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: '#fff', marginTop: 16, marginBottom: 4, textTransform: 'uppercase' }}>
+              <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em', color: '#fff', marginTop: 16, marginBottom: 4 }}>
                 {p.name}
               </h2>
-              <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', marginBottom: 24 }}>
-                {p.description ? (p.description.length > 40 ? p.description.slice(0, 40) + '...' : p.description) : 'ENGINEERING_DOMAIN'}
+              <div style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginBottom: 24 }}>
+                {p.description ? (p.description.length > 60 ? p.description.slice(0, 60) + '...' : p.description) : 'No description'}
               </div>
 
               <div style={{ display: 'flex', gap: 32 }}>
                 <div>
                   <span style={{ fontSize: 24, fontWeight: 900, color: '#fff' }}>{stats?.phasesCount || 0}</span>
-                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', display: 'block', marginTop: 2 }}>Phases</span>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.3)', display: 'block', marginTop: 2 }}>Phases</span>
                 </div>
                 <div>
                   <span style={{ fontSize: 24, fontWeight: 900, color: '#fff' }}>{stats?.featuresCount || 0}</span>
-                  <span style={{ fontSize: 9, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', display: 'block', marginTop: 2 }}>Features</span>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.3)', display: 'block', marginTop: 2 }}>Features</span>
                 </div>
               </div>
+
+              {stats?.lastRun && (
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>
+                  Last run {new Date(stats.lastRun).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                </div>
+              )}
 
               <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button
@@ -346,10 +349,9 @@ export default function DashboardPage() {
                     border: '1px solid rgba(255,255,255,0.15)',
                     borderRadius: 999,
                     padding: '8px 16px',
-                    fontSize: 10,
-                    fontWeight: 800,
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    letterSpacing: 'normal',
                     color: 'rgba(255,255,255,0.7)',
                     background: 'transparent',
                     cursor: 'pointer',
@@ -364,7 +366,7 @@ export default function DashboardPage() {
                     e.currentTarget.style.color = 'rgba(255,255,255,0.7)'
                   }}
                 >
-                  OPEN_MAINFRAME
+                  Open
                 </button>
                 <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
               </div>
@@ -397,8 +399,8 @@ export default function DashboardPage() {
           }}
         >
           <Plus size={32} style={{ color: 'rgba(255,255,255,0.15)' }} />
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>
-            INITIALIZE MISSION DOMAIN
+          <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.25)' }}>
+            New project
           </div>
         </div>
       </div>
@@ -469,24 +471,26 @@ export default function DashboardPage() {
       {/* Dialogs */}
       <Dialog open={isProjectOpen} onOpenChange={setIsProjectOpen}>
         <DialogContent style={{ background: '#000', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 16 }}>
-          <DialogHeader><DialogTitle style={{ color: '#fff', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em' }}>Initialize Domain</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle style={{ color: '#fff', fontWeight: 700 }}>New project</DialogTitle></DialogHeader>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '20px 0' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Label style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Sector Cluster</Label>
-              <select 
-                value={projWS} 
-                onChange={e => setProjWS(e.target.value)} 
-                style={{ height: 44, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '0 12px', color: '#fff', outline: 'none' }}
-              >
-                {workspaces.map(w => <option key={w.id} value={w.id} style={{ background: '#000' }}>{w.name}</option>)}
-              </select>
+              <Label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Workspace</Label>
+              <CustomSelect
+                value={projWS}
+                onChange={setProjWS}
+                options={workspaces.map(w => ({
+                  value: w.id,
+                  label: w.name,
+                }))}
+                width="100%"
+              />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Label style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Codename</Label>
+              <Label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Project name</Label>
               <Input value={projName} onChange={e => setProjName(e.target.value)} style={{ height: 44, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', outline: 'none' }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Label style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)' }}>Stack</Label>
+              <Label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Stack</Label>
               <Input value={projStack} onChange={e => setProjStack(e.target.value)} placeholder="React, Node, etc" style={{ height: 44, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', outline: 'none' }} />
             </div>
           </div>
@@ -498,16 +502,14 @@ export default function DashboardPage() {
                 height: 48,
                 background: accent,
                 color: '#000',
-                fontWeight: 900,
-                textTransform: 'uppercase',
+                fontWeight: 700,
                 borderRadius: 999,
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 12,
-                letterSpacing: '0.1em'
+                fontSize: 13
               }}
             >
-              MOUNT_DOMAIN
+              Create
             </button>
           </DialogFooter>
         </DialogContent>
@@ -515,13 +517,14 @@ export default function DashboardPage() {
 
       <Dialog open={isWorkspaceOpen} onOpenChange={setIsWorkspaceOpen}>
         <DialogContent style={{ background: '#000', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 16 }}>
-          <DialogHeader><DialogTitle style={{ color: '#fff', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.02em' }}>New Cluster</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle style={{ color: '#fff', fontWeight: 700 }}>New workspace</DialogTitle></DialogHeader>
           <div style={{ padding: '20px 0' }}>
+            <Label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 8, display: 'block' }}>Workspace name</Label>
             <Input 
               value={newWorkspaceName} 
               onChange={e => setNewWorkspaceName(e.target.value)} 
-              placeholder="CLUSTER_ID" 
-              style={{ height: 44, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', outline: 'none', fontWeight: 900, textTransform: 'uppercase' }}
+              placeholder="e.g. Personal" 
+              style={{ height: 44, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', outline: 'none' }}
             />
           </div>
           <DialogFooter>
@@ -532,16 +535,14 @@ export default function DashboardPage() {
                 height: 48,
                 background: accent,
                 color: '#000',
-                fontWeight: 900,
-                textTransform: 'uppercase',
+                fontWeight: 700,
                 borderRadius: 999,
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 12,
-                letterSpacing: '0.1em'
+                fontSize: 13
               }}
             >
-              ESTABLISH_CLUSTER
+              Create
             </button>
           </DialogFooter>
         </DialogContent>

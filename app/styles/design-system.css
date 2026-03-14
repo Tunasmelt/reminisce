@@ -28,6 +28,24 @@
   --radius-xl: 24px;
   --radius-pill: 999px;
 
+  --r-xs:   6px;
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-pill: 999px;
+
+  --surface-1: rgba(255,255,255,0.02);
+  --surface-2: rgba(255,255,255,0.04);
+  --surface-3: rgba(255,255,255,0.07);
+  --border-1:  rgba(255,255,255,0.06);
+  --border-2:  rgba(255,255,255,0.1);
+  --border-3:  rgba(255,255,255,0.16);
+
+  --text-1: #ffffff;
+  --text-2: rgba(255,255,255,0.65);
+  --text-3: rgba(255,255,255,0.35);
+  --text-4: rgba(255,255,255,0.18);
+
   /* Typography Scale (Inter) */
   --text-xs: 0.75rem;     /* 12px */
   --text-sm: 0.875rem;    /* 14px */

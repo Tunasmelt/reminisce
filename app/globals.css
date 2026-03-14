@@ -75,3 +75,315 @@ input:-webkit-autofill:focus {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
 }
+
+/* ── Typography system ───────────────── */
+
+.heading-xl {
+  font-size: clamp(32px, 4vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: #fff;
+}
+
+.heading-lg {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.heading-md {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.label-xs {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+}
+
+.label-sm {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+
+.body-sm {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  line-height: 1.6;
+}
+
+/* ── Button system ───────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  transition: opacity 0.15s, 
+              transform 0.15s,
+              border-color 0.15s,
+              color 0.15s,
+              background 0.15s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 11px;
+  border-radius: var(--r-sm);
+}
+
+.btn-md {
+  padding: 9px 18px;
+  font-size: 12px;
+  border-radius: var(--r-sm);
+}
+
+.btn-lg {
+  padding: 12px 24px;
+  font-size: 13px;
+  border-radius: var(--r-sm);
+}
+
+.btn-pill {
+  border-radius: var(--r-pill) !important;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: #000;
+}
+.btn-primary:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.btn-outlined {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.55);
+}
+.btn-outlined:hover {
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.35);
+}
+.btn-ghost:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid rgba(239,68,68,0.25);
+  color: rgba(239,68,68,0.7);
+}
+.btn-danger:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239,68,68,0.08);
+}
+
+/* ── Card system ─────────────────────── */
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-md);
+  transition: border-color 0.15s, 
+              background 0.15s,
+              transform 0.15s;
+}
+
+.card-hover:hover {
+  border-color: rgba(255,255,255,0.12);
+  background: var(--surface-2);
+  transform: translateY(-2px);
+}
+
+.card-interactive {
+  cursor: pointer;
+}
+
+.card-accent-hover:hover {
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: rgba(var(--accent-rgb), 0.04);
+}
+
+/* ── Input system ────────────────────── */
+
+.input-base {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #fff;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, 
+              box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.input-base::placeholder {
+  color: rgba(255,255,255,0.2);
+}
+
+.input-base:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+}
+
+/* ── Status badges ───────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-xs);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge-neutral {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+}
+
+.badge-accent {
+  background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  color: var(--accent-primary);
+}
+
+.badge-success {
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.25);
+  color: #10b981;
+}
+
+.badge-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.25);
+  color: #ef4444;
+}
+
+.badge-warning {
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.25);
+  color: #f59e0b;
+}
+
+/* ── Dividers ────────────────────────── */
+
+.divider {
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  border: none;
+  margin: 0;
+}
+
+/* ── Empty state ─────────────────────── */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 32px;
+  text-align: center;
+  gap: 12px;
+}
+
+.empty-state-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-md);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.empty-state-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: -0.01em;
+}
+
+.empty-state-body {
+  font-size: 12px;
+  color: rgba(255,255,255,0.25);
+  line-height: 1.6;
+  max-width: 280px;
+}
+
+/* ── Focus ring ──────────────────────── */
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ── Animations ──────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation: fadeIn 0.2s ease both;
+}
+
+/* ── Accent hover utility ────────────── */
+
+.accent-hover {
+  transition: color 0.15s, border-color 0.15s;
+}
+.accent-hover:hover {
+  color: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}

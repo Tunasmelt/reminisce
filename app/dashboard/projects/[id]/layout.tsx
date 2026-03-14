@@ -55,28 +55,36 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         alignItems: 'center',
         justifyContent: 'space-between'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <Link href="/dashboard" style={{ color: accent, fontSize: 10, fontWeight: 700, textDecoration: 'none', letterSpacing: '0.05em' }}>
-            {isMobile ? '←' : 'REMINISCE'}
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          <Link href="/dashboard" style={{
+            color: 'rgba(255,255,255,0.3)',
+            fontSize: 12,
+            fontWeight: 500,
+            textDecoration: 'none',
+            letterSpacing: 'normal',
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+          onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.3)'}
+          >
+            Projects
           </Link>
-          {!isMobile && (
-            <>
-              <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10 }}>›</span>
-              <span style={{ 
-                color: 'rgba(255,255,255,0.6)', 
-                fontSize: 10, 
-                fontWeight: 700, 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.08em',
-                maxWidth: 120,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}>
-                {projectName || 'DOM_ID'}
-              </span>
-            </>
-          )}
+          <span style={{
+            color: 'rgba(255,255,255,0.15)',
+            fontSize: 12, margin: '0 6px',
+          }}>/</span>
+          <span style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'rgba(255,255,255,0.7)',
+            letterSpacing: 'normal',
+            maxWidth: 160,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {projectName || '...'}
+          </span>
         </div>
 
         {/* Center Nav Tabs */}
@@ -101,15 +109,14 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                 key={item.label}
                 href={item.href}
                 style={{
-                  padding: isMobile ? '14px 12px' : '14px 16px',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
+                  padding: isMobile ? '13px 12px' : '13px 14px',
+                  fontSize: 12,
+                  fontWeight: isActive ? 600 : 500,
+                  letterSpacing: '0.02em',
                   border: 'none',
                   background: 'transparent',
                   borderBottom: `2px solid ${isActive ? accent : 'transparent'}`,
-                  color: isActive ? accent : 'rgba(255,255,255,0.35)',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
                   textDecoration: 'none',
                   transition: 'all 0.2s',
                   whiteSpace: 'nowrap',

@@ -25,7 +25,8 @@ export async function GET(req: Request) {
       .select(`
         *,
         features (
-          name
+          name,
+          phases ( name )
         )
       `)
       .eq('project_id', projectId)

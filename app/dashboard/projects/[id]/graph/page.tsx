@@ -17,6 +17,7 @@ import {
   BackgroundVariant,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import dagre from '@dagrejs/dagre'
 
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -31,8 +32,8 @@ import {
   Layers,
   Network,
   Terminal,
-  ChevronDown
 } from 'lucide-react'
+import CustomSelect from '@/components/CustomSelect'
 
 // --- Custom Node Components ---
 
@@ -96,6 +97,79 @@ const FeatureNode = ({ data }: NodeProps) => (
     </div>
   </div>
 )
+
+// --- Layout Engine ---
+
+const PROJECT_NODE_W = 280
+const PROJECT_NODE_H = 100
+const PHASE_NODE_W = 260
+const PHASE_NODE_H = 130
+const FEATURE_NODE_W = 220
+const FEATURE_NODE_H = 110
+
+function getLayoutedElements(
+  nodes: Node[],
+  edges: Edge[]
+) {
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({
+    rankdir: 'TB',
+    ranksep: 100,
+    nodesep: 50,
+    marginx: 60,
+    marginy: 60,
+  })
+
+  nodes.forEach(node => {
+    // Size based on node type
+    const isProject = node.type === 'projectNode'
+    const isPhase = node.type === 'phaseNode'
+    g.setNode(node.id, {
+      width: isProject 
+        ? PROJECT_NODE_W 
+        : isPhase 
+        ? PHASE_NODE_W 
+        : FEATURE_NODE_W,
+      height: isProject 
+        ? PROJECT_NODE_H 
+        : isPhase 
+        ? PHASE_NODE_H 
+        : FEATURE_NODE_H,
+    })
+  })
+
+  edges.forEach(edge => {
+    g.setEdge(edge.source, edge.target)
+  })
+
+  dagre.layout(g)
+
+  const layoutedNodes = nodes.map(node => {
+    const nodeWithPosition = g.node(node.id)
+    const isProject = node.type === 'projectNode'
+    const isPhase = node.type === 'phaseNode'
+    const w = isProject 
+      ? PROJECT_NODE_W 
+      : isPhase 
+      ? PHASE_NODE_W 
+      : FEATURE_NODE_W
+    const h = isProject 
+      ? PROJECT_NODE_H 
+      : isPhase 
+      ? PHASE_NODE_H 
+      : FEATURE_NODE_H
+    return {
+      ...node,
+      position: {
+        x: nodeWithPosition.x - w / 2,
+        y: nodeWithPosition.y - h / 2,
+      },
+    }
+  })
+
+  return { nodes: layoutedNodes, edges }
+}
 
 // --- Graph Component ---
 
@@ -209,8 +283,10 @@ export default function GraphPage() {
         })
       })
 
-      setNodes(rfNodes)
-      setEdges(rfEdges)
+      const { nodes: layoutedNodes, edges: layoutedEdges } 
+        = getLayoutedElements(rfNodes, rfEdges)
+      setNodes(layoutedNodes)
+      setEdges(layoutedEdges)
     } catch (err) {
       console.error(err)
       toast.error('Failed to load project graph')
@@ -334,18 +410,36 @@ export default function GraphPage() {
     <div className={`flex-1 ${isMobile ? 'flex flex-col' : 'h-[calc(100vh-220px)]'} bg-black rounded-rem-lg border border-reminisce-border-subtle overflow-hidden flex relative shadow-2xl animate-page-fade`}>
       <title>{`Reminisce — Graph — ${project?.name}`}</title>
       {isMobile ? <MobileListView /> : (
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onNodeDragStop={onNodeDragStop} onNodeClick={onNodeClick} nodeTypes={nodeTypes} fitView snapToGrid snapGrid={[20, 20]} colorMode="dark">
+        <ReactFlow 
+          nodes={nodes} 
+          edges={edges} 
+          onNodesChange={onNodesChange} 
+          onEdgesChange={onEdgesChange} 
+          onNodeDragStop={onNodeDragStop} 
+          onNodeClick={onNodeClick} 
+          nodeTypes={nodeTypes} 
+          fitView 
+          fitViewOptions={{ 
+            padding: 0.15,
+            includeHiddenNodes: false 
+          }}
+          minZoom={0.1}
+          maxZoom={2}
+          snapToGrid 
+          snapGrid={[20, 20]} 
+          colorMode="dark"
+        >
           <Background variant={BackgroundVariant.Dots} gap={40} size={1} color="#1f1f1f" />
           <Controls showFitView={false} className="bg-reminisce-bg-surface border-reminisce-border-default text-white fill-white rounded-rem-md overflow-hidden" />
           <MiniMap className="bg-black/80 border border-reminisce-border-subtle rounded-rem-md overflow-hidden !m-4" nodeColor={(n) => n.type === 'projectNode' ? 'var(--accent-primary)' : n.type === 'phaseNode' ? '#3b82f6' : '#8b5cf6'} maskColor="rgba(0,0,0,0.8)" />
-          <div className="absolute top-6 right-6 z-10"><Button size="sm" variant="outline" className="bg-reminisce-bg-surface/80 backdrop-blur-xl border-reminisce-border-default hover:bg-black text-[10px] font-black text-white rounded-rem-pill px-6 uppercase h-10 shadow-2xl active-button-press"><Maximize className="w-3.5 h-3.5 mr-2" /> RECENTER_TOPOLOGY</Button></div>
+          <div className="absolute top-6 right-6 z-10"><Button size="sm" variant="outline" className="bg-reminisce-bg-surface/80 backdrop-blur-xl border-reminisce-border-default hover:bg-black text-[11px] font-medium text-white rounded-rem-pill px-6 text-transform-none h-10 shadow-2xl active-button-press"><Maximize className="w-3.5 h-3.5 mr-2" /> Recenter</Button></div>
         </ReactFlow>
       )}
 
       {selectedNode && (
         <div className={`absolute ${isMobile ? 'inset-0' : 'top-6 right-6 bottom-6 w-96'} bg-reminisce-bg-surface/95 border border-reminisce-border-subtle backdrop-blur-2xl rounded-rem-lg shadow-2xl z-50 flex flex-col animate-in ${isMobile ? 'slide-in-from-bottom-10' : 'slide-in-from-right-10'} duration-500`}>
           <div className="p-6 md:p-8 border-b border-reminisce-border-subtle flex items-center justify-between bg-black/40">
-            <div className="flex items-center gap-3"><Settings2 className="w-4 h-4 text-[var(--accent-primary)]" /><h3 className="text-[10px] font-black text-white uppercase tracking-widest">Node Inspector</h3></div>
+            <div className="flex items-center gap-3"><Settings2 className="w-4 h-4 text-[var(--accent-primary)]" /><h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)' }}>Node Inspector</h3></div>
             <Button size="icon" variant="ghost" className="h-8 w-8 text-reminisce-text-muted hover:text-white" onClick={() => setSelectedNode(null)}><X className="w-4 h-4" /></Button>
           </div>
           <div className="flex-1 overflow-y-auto p-8 pb-24 scrollbar-thin scrollbar-thumb-reminisce-border-subtle">
@@ -353,7 +447,21 @@ export default function GraphPage() {
             <h2 className="text-3xl font-black text-white mb-4 italic uppercase tracking-tighter">{selectedNode.data.label as string}</h2>
             <div className="space-y-10 mt-10">
               <div><label className="text-[9px] font-black text-reminisce-text-muted uppercase tracking-widest block mb-4">SPECIFICATION</label><p className="text-sm text-reminisce-text-secondary leading-relaxed bg-black/40 p-6 rounded-rem-md border border-reminisce-border-subtle font-medium italic">{selectedNode.data.description as string || 'No documentation found.'}</p></div>
-              <div><label className="text-[9px] font-black text-reminisce-text-muted uppercase tracking-widest block mb-4">ORCHESTRATION_STATUS</label><div className="relative"><select className="w-full appearance-none bg-black border border-reminisce-border-default rounded-rem-md px-4 py-3.5 text-[10px] font-black text-white uppercase tracking-widest outline-none hover:border-[var(--accent-primary)] transition-all cursor-pointer" value={selectedNode.data.status as string} onChange={(e) => handleStatusChange(e.target.value)}><option value="planned">PLANNED</option><option value="active">ACTIVE</option><option value="complete">COMPLETE</option></select><ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--accent-primary)] pointer-events-none" /></div></div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', display: 'block', marginBottom: 8 }}>
+                  Status
+                </label>
+                <CustomSelect
+                  value={selectedNode.data.status as string}
+                  onChange={handleStatusChange}
+                  options={[
+                    { value: 'planned', label: 'PLANNED' },
+                    { value: 'active', label: 'ACTIVE' },
+                    { value: 'complete', label: 'COMPLETE' },
+                  ]}
+                  width="100%"
+                />
+              </div>
               {selectedNode.type === 'featureNode' && (
                 <div className="bg-[var(--accent-subtle)] border border-[var(--accent-primary)]/20 p-8 rounded-rem-lg mt-10"><div className="flex items-center gap-3 mb-4"><Terminal className="w-5 h-5 text-[var(--accent-primary)]" /><span className="text-[10px] font-black text-[var(--accent-primary)] uppercase">Agent Control</span></div><Button className="w-full h-14 bg-[var(--accent-primary)] hover:brightness-110 text-black font-black uppercase tracking-widest text-[11px] rounded-rem-pill active-button-press" onClick={() => router.push(`/dashboard/projects/${projectId}/agent?featureId=${selectedNode.data.id}`)}><Play className="w-4 h-4 mr-3" /> RUN MODULE AGENT</Button></div>
               )}

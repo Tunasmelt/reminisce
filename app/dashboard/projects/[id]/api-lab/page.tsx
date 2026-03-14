@@ -2,9 +2,8 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useParams } from 'next/navigation'
-import { 
-  Radio
-} from 'lucide-react'
+import { } from 'lucide-react'
+import CustomSelect from '@/components/CustomSelect'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useTheme } from '@/hooks/useTheme'
@@ -20,6 +19,13 @@ interface ApiRes {
 }
 
 
+
+function hexToRgba(hex: string, a: number) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
 
 function ApiLabContent() {
   const params = useParams()
@@ -38,6 +44,14 @@ function ApiLabContent() {
   
   const [response, setResponse] = useState<ApiRes | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
+
+  const METHOD_OPTIONS = [
+    { value: 'GET',    label: 'GET',    color: '#10b981' },
+    { value: 'POST',   label: 'POST',   color: '#3b82f6' },
+    { value: 'PUT',    label: 'PUT',    color: '#f59e0b' },
+    { value: 'DELETE', label: 'DELETE', color: '#ef4444' },
+    { value: 'PATCH',  label: 'PATCH',  color: '#8b5cf6' },
+  ]
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -86,29 +100,25 @@ function ApiLabContent() {
         gap: 24,
         background: 'rgba(255,255,255,0.01)'
       }}>
-        <h2 style={{ fontSize: 13, fontWeight: 800, color: '#fff', letterSpacing: '0.1em', textTransform: 'uppercase', margin: 0 }}>
-          REQUEST_CONSTRUCTOR
+        <h2 style={{
+          fontSize: 11, fontWeight: 500,
+          letterSpacing: '0.03em',
+          textTransform: 'none',
+          color: 'rgba(255,255,255,0.35)',
+          margin: 0
+        }}>
+          Request
         </h2>
 
         {/* Method & URL */}
         <div style={{ display: 'flex', gap: 12 }}>
-          <select 
-            value={method} 
-            onChange={(e) => setMethod(e.target.value)}
-            style={{
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              padding: '0 16px',
-              fontSize: 11,
-              fontWeight: 800,
-              color: accent,
-              outline: 'none',
-              cursor: 'pointer'
-            }}
-          >
-            {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <CustomSelect
+            value={method}
+            onChange={setMethod}
+            options={METHOD_OPTIONS}
+            width={110}
+            compact
+          />
           <input 
             type="text"
             value={url}
@@ -141,10 +151,10 @@ function ApiLabContent() {
                   border: 'none',
                   borderBottom: `2px solid ${activeTab === tab ? accent : 'transparent'}`,
                   color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.3)',
-                  fontSize: 10,
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: 'none',
+                  letterSpacing: 'normal',
                   cursor: 'pointer',
                   transition: 'all 0.2s'
                 }}
@@ -190,14 +200,15 @@ function ApiLabContent() {
               />
             )}
             {activeTab === 'Auth' && (
-               <select 
-                value={authType} 
-                onChange={(e) => setAuthType(e.target.value)}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 12, fontSize: 12, color: '#fff', outline: 'none' }}
-               >
-                 <option>None</option>
-                 <option>Bearer Token</option>
-               </select>
+              <CustomSelect
+                value={authType}
+                onChange={setAuthType}
+                options={[
+                  { value: 'None', label: 'None' },
+                  { value: 'Bearer Token', label: 'Bearer Token' },
+                ]}
+                width="100%"
+              />
             )}
           </div>
         </div>
@@ -213,20 +224,26 @@ function ApiLabContent() {
             padding: '14px',
             fontSize: 11,
             fontWeight: 800,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
+            letterSpacing: 'normal',
+            textTransform: 'none',
             cursor: 'pointer'
           }}
         >
-          {isExecuting ? 'TRANSMITTING...' : 'EXECUTE_REQUEST →'}
+          {isExecuting ? 'Sending...' : 'Send request'}
         </button>
       </div>
 
       {/* RIGHT PANEL: RESPONSE VIEWER */}
       <div style={{ flex: 1, padding: 32, display: 'flex', flexDirection: 'column', gap: 24, background: '#000' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.1em', textTransform: 'uppercase', margin: 0 }}>
-            SIGNAL_RESPONSE
+          <h2 style={{
+            fontSize: 11, fontWeight: 500,
+            letterSpacing: '0.03em',
+            textTransform: 'none',
+            color: 'rgba(255,255,255,0.35)',
+            margin: 0
+          }}>
+            Response
           </h2>
           <button style={{ 
             background: 'transparent', 
@@ -234,18 +251,160 @@ function ApiLabContent() {
             color: accent, 
             borderRadius: 999, 
             padding: '6px 20px', 
-            fontSize: 10, 
-            fontWeight: 800, 
+            fontSize: 11, 
+            fontWeight: 600, 
+            textTransform: 'none',
             cursor: 'pointer' 
           }}>
-            PREDICTIVE_DESIGN →
+            AI suggest
           </button>
         </div>
 
-        {response ? (
+        {!response ? (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '24px',
+            gap: 16,
+          }}>
+            
+            {/* Helpful header */}
+            <div style={{
+              fontSize: 11, fontWeight: 500,
+              letterSpacing: 'normal',
+              textTransform: 'none',
+              color: 'rgba(255,255,255,0.45)',
+              marginBottom: 4,
+            }}>
+              Example requests
+            </div>
+        
+            {/* 3 starter request cards */}
+            {[
+              {
+                method: 'GET',
+                url: 'https://jsonplaceholder.typicode.com/posts/1',
+                label: 'Test endpoint',
+                description: 'Fetch a sample JSON response to verify your setup',
+                methodColor: '#10b981',
+              },
+              {
+                method: 'POST',
+                url: 'https://jsonplaceholder.typicode.com/posts',
+                label: 'POST with JSON body',
+                description: 'Send structured data and inspect the response',
+                methodColor: '#3b82f6',
+              },
+              {
+                method: 'GET',
+                url: 'https://api.github.com/repos/vercel/next.js',
+                label: 'GitHub API',
+                description: 'Public API call — no auth required',
+                methodColor: '#10b981',
+              },
+            ].map((example, i) => (
+              <div
+                key={i}
+                onClick={() => {
+                  setUrl(example.url)
+                  setMethod(example.method)
+                }}
+                style={{
+                  padding: '14px 16px',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,0.02)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor =
+                    hexToRgba(accent, 0.3)
+                  e.currentTarget.style.background =
+                    hexToRgba(accent, 0.04)
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor =
+                    'rgba(255,255,255,0.07)'
+                  e.currentTarget.style.background =
+                    'rgba(255,255,255,0.02)'
+                }}
+              >
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8, marginBottom: 6,
+                }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 800,
+                    letterSpacing: '0.08em',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: `${example.methodColor}20`,
+                    color: example.methodColor,
+                    border: `1px solid ${example.methodColor}40`,
+                    flexShrink: 0,
+                  }}>
+                    {example.method}
+                  </span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600,
+                    color: '#fff',
+                  }}>
+                    {example.label}
+                  </span>
+                  <span style={{
+                    marginLeft: 'auto',
+                    fontSize: 9,
+                    color: 'rgba(255,255,255,0.2)',
+                  }}>
+                    Click to load →
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  color: accent,
+                  marginBottom: 4,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {example.url}
+                </div>
+                <div style={{
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.3)',
+                  lineHeight: 1.4,
+                }}>
+                  {example.description}
+                </div>
+              </div>
+            ))}
+        
+            {/* Divider */}
+            <div style={{
+              height: 1,
+              background: 'rgba(255,255,255,0.05)',
+              margin: '4px 0',
+            }} />
+        
+            {/* Hint text */}
+            <div style={{
+              fontSize: 11,
+              color: 'rgba(255,255,255,0.2)',
+              textAlign: 'center',
+              lineHeight: 1.6,
+            }}>
+              Enter any URL in the request constructor
+              and press Execute to see the response here.
+            </div>
+          </div>
+        ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 24 }}>
             {/* Status Line */}
-            <div style={{ display: 'flex', gap: 32, padding: '16px 24px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', gap: 32, padding: '16px 24px', background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
               <div>
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 4 }}>Status</div>
                 <div style={{ fontSize: 14, fontWeight: 800, color: response.status < 300 ? '#10b981' : '#ef4444' }}>{response.status} {response.statusText}</div>
@@ -265,7 +424,7 @@ function ApiLabContent() {
               flex: 1,
               background: 'rgba(255,255,255,0.02)',
               border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 12,
+              borderRadius: 16,
               padding: 24,
               fontFamily: 'monospace',
               fontSize: 12,
@@ -276,13 +435,6 @@ function ApiLabContent() {
             }}>
               <pre>{(() => { try { return JSON.stringify(JSON.parse(response.body), null, 2) } catch { return response.body } })()}</pre>
             </div>
-          </div>
-        ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.15 }}>
-            <Radio size={80} style={{ marginBottom: 24 }} />
-            <p style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.2em' }}>
-              Awaiting transmission signal...
-            </p>
           </div>
         )}
       </div>

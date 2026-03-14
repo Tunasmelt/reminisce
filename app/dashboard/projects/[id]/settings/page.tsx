@@ -173,22 +173,22 @@ export default function SettingsPage() {
 
       {/* TAB NAVIGATION */}
       <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 40, display: 'flex', gap: 0, overflowX: 'auto' }} className="hide-scrollbar">
-        {['aesthetics', 'api keys', 'project', 'account'].map(t => (
+        {['Workspace', 'Models', 'Aesthetics', 'Advanced'].map(t => (
           <button
             key={t}
-            onClick={() => setActiveTab(t)}
+            onClick={() => setActiveTab(t.toLowerCase())}
             style={{
               padding: '10px 20px',
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: '0.03em',
+              textTransform: 'none',
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
-              borderBottom: `2px solid ${activeTab === t ? accent : 'transparent'}`,
+              borderBottom: `2px solid ${activeTab === t.toLowerCase() ? accent : 'transparent'}`,
               marginBottom: -1,
-              color: activeTab === t ? accent : 'rgba(255,255,255,0.3)',
+              color: activeTab === t.toLowerCase() ? accent : 'rgba(255,255,255,0.3)',
               transition: 'all 0.2s',
               minWidth: 'max-content'
             }}
@@ -202,17 +202,17 @@ export default function SettingsPage() {
       <div>
         {activeTab === 'aesthetics' && (
           <div className="page-enter">
-            <h3 style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: 24 }}>
-              Visual Frequency
+            <h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', marginBottom: 24 }}>
+              Visual frequency
             </h3>
             <ThemeSwitcher />
           </div>
         )}
 
-        {activeTab === 'api keys' && (
+        {activeTab === 'models' && (
           <div className="page-enter">
-            <h3 style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>
-              AI Provider Keys
+            <h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>
+              Models
             </h3>
             <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 32 }}>
               Connect your AI providers to enable model routing and context injection.
@@ -222,7 +222,7 @@ export default function SettingsPage() {
               const connected = configuredProviders.includes(p.id)
               return (
                 <div key={p.id} style={{ 
-                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, 
+                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16, 
                   padding: isMobile ? '16px 20px' : '20px 24px', marginBottom: 12, background: 'rgba(255,255,255,0.02)' 
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -261,6 +261,14 @@ export default function SettingsPage() {
                         borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#fff', 
                         fontFamily: 'monospace', outline: 'none'
                       }}
+                      onFocus={e => {
+                        e.currentTarget.style.borderColor = accent
+                        e.currentTarget.style.boxShadow = `0 0 0 3px ${hexToRgba(accent, 0.1)}`
+                      }}
+                      onBlur={e => {
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
+                        e.currentTarget.style.boxShadow = 'none'
+                      }}
                     />
                     <button 
                       onClick={() => saveKey(p.id)}
@@ -282,19 +290,27 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {activeTab === 'project' && project && (
+        {activeTab === 'workspace' && project && (
           <div className="page-enter">
-            <h3 style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: 24 }}>
-              Project Configuration
+            <h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', marginBottom: 24 }}>
+              Workspace
             </h3>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Project Name</label>
+              <label style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.45)', textTransform: 'none', letterSpacing: 'normal', display: 'block', marginBottom: 8 }}>Project name</label>
               <input 
                 type="text" 
                 value={project.name}
                 onChange={(e) => setProject({ ...project, name: e.target.value })}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none' }}
+                onFocus={e => {
+                  e.currentTarget.style.borderColor = accent
+                  e.currentTarget.style.boxShadow = `0 0 0 3px ${hexToRgba(accent, 0.1)}`
+                }}
+                onBlur={e => {
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
+                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none', transition: 'all 0.2s' }}
               />
             </div>
 
@@ -332,8 +348,8 @@ export default function SettingsPage() {
               SAVE CHANGES
             </button>
 
-            <div style={{ marginTop: 48, border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: 24 }}>
-              <h4 style={{ fontSize: 10, fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>DANGER ZONE</h4>
+            <div style={{ marginTop: 48, border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: 24 }}>
+              <h4 style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', textTransform: 'none', letterSpacing: 'normal', marginBottom: 16 }}>Danger zone</h4>
               <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Deleting this mission will purge all archived metadata, feature specs, and context engine versions. This action is irreversible.</p>
               <button 
                 onClick={handleDeleteProject}
@@ -351,10 +367,10 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {activeTab === 'account' && user && (
+        {activeTab === 'advanced' && user && (
           <div className="page-enter">
-            <h3 style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginBottom: 24 }}>
-              Account Information
+            <h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', marginBottom: 24 }}>
+              Advanced
             </h3>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '14px 0', gap: 16 }}>
@@ -379,13 +395,13 @@ export default function SettingsPage() {
               style={{
                 marginTop: 32, border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)',
                 background: 'transparent', borderRadius: 8, padding: '10px 20px', 
-                fontSize: 12, fontWeight: 700, textTransform: 'uppercase', cursor: 'pointer',
+                fontSize: 12, fontWeight: 700, textTransform: 'none', cursor: 'pointer',
                 transition: 'all 0.2s', width: isMobile ? '100%' : 'auto'
               }}
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; e.currentTarget.style.color = '#fff' }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)' }}
             >
-              SIGN OUT
+              Sign out
             </button>
           </div>
         )}
