@@ -46,6 +46,7 @@ export default function SettingsPage() {
 
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([])
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
+  const [userPlan, setUserPlan] = useState<'free' | 'pro'>('free')
   
   const [isMobile, setIsMobile] = useState(false)
   useEffect(() => {
@@ -73,7 +74,18 @@ export default function SettingsPage() {
         supabase.auth.getUser()
       ])
       if (proj) setProject(proj)
-      if (authUser?.user) setUser(authUser.user)
+      if (authUser?.user) {
+        setUser(authUser.user)
+        // Fetch plan
+        const { data: planData } = await supabase
+          .from('user_plans')
+          .select('plan')
+          .eq('user_id', authUser.user.id)
+          .single()
+        if (planData?.plan) {
+          setUserPlan(planData.plan as 'free' | 'pro')
+        }
+      }
       await fetchKeys()
       setLoading(false)
     }
@@ -222,82 +234,258 @@ export default function SettingsPage() {
 
         {activeTab === 'models' && (
           <div className="page-enter">
-            <h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', marginBottom: 8 }}>
-              Models
-            </h3>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 32 }}>
-              Connect your AI providers to enable model routing and context injection.
-            </p>
+            <div style={{
+              fontSize: 9, fontWeight: 700,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: accent, marginBottom: 4,
+            }}>
+              API Key Configuration
+            </div>
+            <div style={{
+              fontSize: 13,
+              color: 'rgba(255,255,255,0.5)',
+              marginBottom: 24, lineHeight: 1.6,
+            }}>
+              Connect your AI providers to enable 
+              model routing and context injection.
+            </div>
 
-            {PROVIDERS.map(p => {
-              const connected = configuredProviders.includes(p.id)
-              return (
-                <div key={p.id} style={{ 
-                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16, 
-                  padding: isMobile ? '16px 20px' : '20px 24px', marginBottom: 12, background: 'rgba(255,255,255,0.02)' 
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{p.name}</span>
-                      <span style={{ 
-                        marginLeft: 10, 
-                        background: connected ? hexToRgba('#10b981', 0.1) : 'rgba(255,255,255,0.05)',
-                        border: `1px solid ${connected ? hexToRgba('#10b981', 0.3) : 'rgba(255,255,255,0.1)'}`,
-                        color: connected ? '#10b981' : 'rgba(255,255,255,0.25)',
-                        borderRadius: 999, padding: '2px 8px', fontSize: 9, 
-                        fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase'
-                      }}>
-                        {connected ? 'CONNECTED' : 'NOT CONFIGURED'}
-                      </span>
-                    </div>
-                    {connected && (
-                      <button 
-                        onClick={() => deleteKey(p.id)}
-                        style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', transition: 'all 0.2s' }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.2)'}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ marginTop: 12, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 8 }}>
-                    <input 
-                      type="password" 
-                      placeholder={p.placeholder}
-                      value={keyInputs[p.id] || ''}
-                      onChange={(e) => setKeyInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                      style={{
-                        flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#fff', 
-                        fontFamily: 'monospace', outline: 'none'
-                      }}
-                      onFocus={e => {
-                        e.currentTarget.style.borderColor = accent
-                        e.currentTarget.style.boxShadow = `0 0 0 3px ${hexToRgba(accent, 0.1)}`
-                      }}
-                      onBlur={e => {
-                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                        e.currentTarget.style.boxShadow = 'none'
-                      }}
-                    />
-                    <button 
-                      onClick={() => saveKey(p.id)}
-                      style={{
-                        background: accent, color: '#000', border: 'none', borderRadius: 8,
-                        padding: '10px 16px', fontSize: 11, fontWeight: 800, 
-                        textTransform: 'uppercase', cursor: 'pointer', whiteSpace: 'nowrap',
-                        transition: 'all 200ms cubic-bezier(0.19, 1, 0.22, 1)'
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'scale(1.02)' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)' }}
-                    >
-                      SAVE KEY
-                    </button>
-                  </div>
+            {userPlan !== 'pro' ? (
+              /* ── LOCKED STATE for free users ── */
+              <div style={{
+                border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                borderRadius: 12,
+                padding: '32px 28px',
+                background: hexToRgba(accent, 0.04),
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 32, marginBottom: 14 }}>
+                  🔒
                 </div>
-              )
-            })}
+                <div style={{
+                  fontSize: 16, fontWeight: 700,
+                  color: '#fff', marginBottom: 8,
+                }}>
+                  BYOK is a Pro feature
+                </div>
+                <div style={{
+                  fontSize: 13,
+                  color: 'rgba(255,255,255,0.4)',
+                  lineHeight: 1.65, marginBottom: 24,
+                  maxWidth: 380, margin: '0 auto 24px',
+                }}>
+                  Bring Your Own Key (BYOK) lets you use 
+                  your personal API keys for Anthropic, 
+                  OpenRouter, Mistral, and more — bypassing 
+                  the gem economy entirely. Available on Pro.
+                </div>
+                <div style={{
+                  display: 'flex', gap: 8,
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                }}>
+                  {['Anthropic', 'OpenRouter', 'Mistral', 
+                    'Google AI', 'MiniMax'].map(p => (
+                    <span key={p} style={{
+                      fontSize: 10, fontWeight: 600,
+                      padding: '4px 12px',
+                      borderRadius: 999,
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      color: 'rgba(255,255,255,0.35)',
+                    }}>
+                      {p}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  onClick={() => 
+                    window.location.href = '/upgrade'
+                  }
+                  style={{
+                    marginTop: 24,
+                    display: 'inline-flex',
+                    alignItems: 'center', gap: 6,
+                    padding: '10px 24px',
+                    background: accent, color: '#000',
+                    border: 'none', borderRadius: 999,
+                    fontSize: 12, fontWeight: 800,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Upgrade to Pro →
+                </button>
+              </div>
+            ) : (
+              /* ── UNLOCKED STATE for pro users ── */
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center', gap: 8,
+                  marginBottom: 20, padding: '10px 14px',
+                  background: 'rgba(16,185,129,0.06)',
+                  border: '1px solid rgba(16,185,129,0.2)',
+                  borderRadius: 8,
+                }}>
+                  <span style={{ color: '#10b981' }}>✓</span>
+                  <span style={{
+                    fontSize: 12,
+                    color: 'rgba(255,255,255,0.5)',
+                  }}>
+                    <strong style={{ color: '#10b981' }}>
+                      Pro — BYOK active.
+                    </strong>
+                    {' '}Your own keys bypass the gem economy 
+                    and have no usage limits from Reminisce.
+                  </span>
+                </div>
+                {PROVIDERS.map(p => {
+                  const isConfigured = 
+                    configuredProviders.includes(p.id)
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        padding: '16px 18px',
+                        background: isConfigured
+                          ? 'rgba(16,185,129,0.04)'
+                          : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${isConfigured
+                          ? 'rgba(16,185,129,0.2)'
+                          : 'rgba(255,255,255,0.07)'}`,
+                        borderRadius: 10,
+                        marginBottom: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center', gap: 8,
+                          marginBottom: 8,
+                        }}>
+                          <span style={{
+                            fontSize: 13, fontWeight: 600,
+                            color: '#fff',
+                          }}>
+                            {p.name}
+                          </span>
+                          {isConfigured && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              background: 'rgba(16,185,129,0.1)',
+                              border: '1px solid rgba(16,185,129,0.25)',
+                              color: '#10b981',
+                              letterSpacing: '0.06em',
+                              textTransform: 'uppercase',
+                            }}>
+                              Configured
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          display: 'flex', gap: 8,
+                        }}>
+                          <input
+                            type="password"
+                            placeholder={isConfigured
+                              ? '••••••••••••••••'
+                              : p.placeholder}
+                            value={keyInputs[p.id] || ''}
+                            onChange={e => setKeyInputs(
+                              prev => ({
+                                ...prev,
+                                [p.id]: e.target.value
+                              })
+                            )}
+                            style={{
+                              flex: 1,
+                              background: 'rgba(255,255,255,0.04)',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: 8,
+                              padding: '8px 12px',
+                              fontSize: 12,
+                              color: '#fff',
+                              fontFamily: 'monospace',
+                              outline: 'none',
+                            }}
+                            onFocus={e => {
+                              e.currentTarget.style.borderColor
+                                = accent
+                            }}
+                            onBlur={e => {
+                              e.currentTarget.style.borderColor
+                                = 'rgba(255,255,255,0.1)'
+                            }}
+                          />
+                          <button
+                            onClick={() => saveKey(p.id)}
+                            disabled={!keyInputs[p.id]}
+                            style={{
+                              padding: '8px 16px',
+                              background: keyInputs[p.id]
+                                ? accent : 'transparent',
+                              color: keyInputs[p.id]
+                                ? '#000'
+                                : 'rgba(255,255,255,0.25)',
+                              border: `1px solid ${keyInputs[p.id]
+                                ? 'transparent'
+                                : 'rgba(255,255,255,0.1)'}`,
+                              borderRadius: 8,
+                              fontSize: 11, fontWeight: 700,
+                              cursor: keyInputs[p.id]
+                                ? 'pointer' : 'not-allowed',
+                              transition: 'all 0.15s',
+                              flexShrink: 0,
+                            }}
+                          >
+                            Save
+                          </button>
+                          {isConfigured && (
+                            <button
+                              onClick={() => deleteKey(p.id)}
+                              style={{
+                                padding: '8px 12px',
+                                background: 'transparent',
+                                border: '1px solid rgba(239,68,68,0.2)',
+                                borderRadius: 8,
+                                color: 'rgba(239,68,68,0.6)',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                                transition: 'all 0.15s',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.borderColor
+                                  = '#ef4444'
+                                e.currentTarget.style.color
+                                  = '#ef4444'
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.borderColor
+                                  = 'rgba(239,68,68,0.2)'
+                                e.currentTarget.style.color
+                                  = 'rgba(239,68,68,0.6)'
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 

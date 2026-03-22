@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServiceSupabase, supabase as clientSupabase } from '@/lib/supabase'
 import { callAI } from '@/lib/ai-client'
+import { awardCoins } from '@/lib/wallet'
 
 export const dynamic = 'force-dynamic'
 
@@ -287,6 +288,20 @@ ${promptContext}`
       .eq('id', session.id)
 
     if (updErr) throw updErr
+
+    // Award coins for completing wizard
+    try {
+      const reward = await awardCoins(
+        user.id,
+        'wizard_complete',
+        projectId
+      )
+      if (reward.awarded) {
+        console.log(
+          `Awarded ${reward.amount} coins to ${user.id} for wizard_complete`
+        )
+      }
+    } catch { /* non-fatal */ }
 
     return NextResponse.json(parsed)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

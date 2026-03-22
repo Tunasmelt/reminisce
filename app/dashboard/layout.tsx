@@ -15,13 +15,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { accent } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [wallet, setWallet] = useState<{ gems: number, coins: number } | null>(null)
+  const [userPlan, setUserPlan] = useState<'free' | 'pro'>('free')
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) {
         setUser(data.user)
-        // Fetch or create wallet
+        // Fetch wallet
         supabase
           .from('user_wallets')
           .select('gems, coins')
@@ -30,18 +31,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .then(({ data: walletData }) => {
             if (walletData) {
               setWallet(walletData)
-            } else {
-              // Create wallet for existing users
-              supabase
-                .from('user_wallets')
-                .upsert({ 
-                  user_id: data.user.id, 
-                  gems: 0, 
-                  coins: 100 
-                }, { onConflict: 'user_id' })
-                .then(() => 
-                  setWallet({ gems: 0, coins: 100 })
-                )
+            }
+          })
+        
+        // Fetch plan
+        supabase
+          .from('user_plans')
+          .select('plan')
+          .eq('user_id', data.user.id)
+          .single()
+          .then(({ data: planData }) => {
+            if (planData) {
+              setUserPlan(planData.plan as 'free'|'pro')
             }
           })
       }
@@ -114,38 +115,93 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                padding: '5px 12px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 999,
-                fontSize: 12,
-                cursor: 'default',
-              }}
-              title={`${wallet.gems} gems (premium) · ${wallet.coins} coins (free)`}
-              >
-                <span style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 4,
-                  color: '#a78bfa',
-                  fontWeight: 600,
+                gap: 6,
+              }}>
+                {/* Plan badge */}
+                <span style={{
+                  fontSize: 9, fontWeight: 800,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  background: userPlan === 'pro'
+                    ? 'rgba(139,92,246,0.15)'
+                    : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${userPlan === 'pro'
+                    ? 'rgba(139,92,246,0.35)'
+                    : 'rgba(255,255,255,0.1)'}`,
+                  color: userPlan === 'pro'
+                    ? '#a78bfa'
+                    : 'rgba(255,255,255,0.4)',
                 }}>
-                  💎 {wallet.gems}
+                  {userPlan === 'pro' ? '⚡ Pro' : 'Free'}
                 </span>
-                <span style={{ 
-                  color: 'rgba(255,255,255,0.2)',
-                  fontSize: 10,
-                }}>·</span>
-                <span style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 4,
-                  color: 'rgba(255,255,255,0.5)',
-                  fontWeight: 500,
-                }}>
-                  🪙 {wallet.coins}
-                </span>
+                {/* Wallet */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6, padding: '5px 10px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 999,
+                    fontSize: 12, cursor: 'default',
+                  }}
+                  title={`${wallet.coins} coins (daily: resets at midnight UTC) · ${wallet.gems} gems (premium)`}
+                >
+                  <span style={{
+                    display: 'flex',
+                    alignItems: 'center', gap: 3,
+                    color: 'rgba(255,255,255,0.5)',
+                    fontWeight: 600,
+                  }}>
+                    🪙 {wallet.coins}
+                  </span>
+                  {userPlan === 'pro' && (
+                    <>
+                      <span style={{
+                        color: 'rgba(255,255,255,0.15)',
+                        fontSize: 10,
+                      }}>·</span>
+                      <span style={{
+                        display: 'flex',
+                        alignItems: 'center', gap: 3,
+                        color: '#a78bfa', fontWeight: 600,
+                      }}>
+                        💎 {wallet.gems}
+                      </span>
+                    </>
+                  )}
+                </div>
+                {/* Upgrade button for free users */}
+                {userPlan === 'free' && (
+                  <button
+                    onClick={() => 
+                      window.location.href = '/upgrade'
+                    }
+                    style={{
+                      fontSize: 10, fontWeight: 700,
+                      padding: '4px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${accent}60`,
+                      background: `${accent}15`,
+                      color: accent,
+                      cursor: 'pointer',
+                      letterSpacing: '0.04em',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = 
+                        `${accent}25`
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 
+                        `${accent}15`
+                    }}
+                  >
+                    Upgrade →
+                  </button>
+                )}
               </div>
             )}
             <ThemeToggle />

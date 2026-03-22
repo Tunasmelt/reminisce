@@ -58,6 +58,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [projectStats, setProjectStats] = useState<Record<string, ProjectStats>>({})
   const [searchQuery, setSearchQuery] = useState('')
+  const [userPlan, setUserPlan] = useState<{ plan: string, projects_limit: number } | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [wallet, setWallet] = useState<{ gems: number, coins: number } | null>(null)
 
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false)
@@ -100,6 +103,56 @@ export default function DashboardPage() {
           stats[proj.id] = { id: proj.id, phasesCount: pCount || 0, featuresCount: fCount || 0, lastRun: (lastRun as { created_at: string } | null)?.created_at || null }
         }
         setProjectStats(stats)
+      }
+
+      const { data: planData } = await supabase
+        .from('user_plans')
+        .select('plan, projects_limit')
+        .eq('user_id', user.id)
+        .single()
+      
+      if (planData) setUserPlan(planData)
+
+      const { data: walletData } = await supabase
+        .from('user_wallets')
+        .select('gems, coins')
+        .eq('user_id', user.id)
+        .single()
+      
+      if (walletData) setWallet(walletData)
+
+      // Handle Stripe redirect success params
+      const params = new URLSearchParams(window.location.search)
+      const upgraded = params.get('upgraded')
+      const gemsPurchased = params.get('gems_purchased')
+      
+      if (upgraded === 'true') {
+        toast.success(
+          '🎉 Welcome to Pro! Your 100 gems have been granted.',
+          { duration: 6000 }
+        )
+        // Clean URL
+        window.history.replaceState({}, '', '/dashboard')
+        // Refresh wallet + plan display
+        setWallet(prev => prev 
+          ? { ...prev, gems: (prev.gems || 0) + 100 }
+          : prev
+        )
+        setUserPlan({ plan: 'pro', projects_limit: 999 })
+      }
+      
+      if (gemsPurchased) {
+        toast.success(
+          `💎 ${gemsPurchased} gems added to your wallet!`,
+          { duration: 6000 }
+        )
+        window.history.replaceState({}, '', '/dashboard')
+        setWallet(prev => prev
+          ? { ...prev, 
+              gems: (prev.gems || 0) + 
+                    parseInt(gemsPurchased) }
+          : prev
+        )
       }
     } catch { toast.error('Query failure') }
     finally { setLoading(false) }
@@ -194,37 +247,102 @@ export default function DashboardPage() {
             AI-powered context for every project.
           </div>
         </div>
-        <button 
-          onClick={() => setIsProjectOpen(true)}
-          disabled={workspaces.length === 0}
-          style={{
-            border: '1px solid rgba(255,255,255,0.15)',
-            background: accent,
-            borderRadius: 999,
-            padding: '12px 24px',
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: '0.02em',
-            color: '#000',
+
+        {userPlan && userPlan.plan === 'free' && (
+          <div style={{
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
             gap: 8,
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            width: isMobile ? '100%' : 'auto'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.opacity = '0.88'
-            e.currentTarget.style.transform = 'scale(1.02)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.opacity = '1'
-            e.currentTarget.style.transform = 'scale(1)'
-          }}
-        >
-          <Rocket size={14} /> New project
-        </button>
+          }}>
+            <div style={{
+              width: 200,
+              height: 4,
+              background: 'rgba(255,255,255,0.07)',
+              borderRadius: 999,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min(
+                  (projects.length / userPlan.projects_limit) 
+                  * 100, 100
+                )}%`,
+                background: projects.length >= 
+                  userPlan.projects_limit
+                    ? '#ef4444'
+                    : accent,
+                borderRadius: 999,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+            <span style={{
+              fontSize: 11,
+              color: 'rgba(255,255,255,0.35)',
+            }}>
+              {projects.length}/{userPlan.projects_limit} projects
+              {projects.length >= userPlan.projects_limit && (
+                <span style={{ color: '#ef4444' }}>
+                  {' '}· limit reached
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
+        {(() => {
+          const atLimit = userPlan 
+            && projects.length >= userPlan.projects_limit
+          return (
+            <button
+              onClick={() => {
+                if (atLimit) {
+                  toast.error(
+                    `Free tier allows ${userPlan?.projects_limit} projects. Upgrade to Pro for unlimited.`,
+                    { duration: 5000 }
+                  )
+                  return
+                }
+                setIsProjectOpen(true)
+              }}
+              disabled={workspaces.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center', gap: 8,
+                padding: '12px 24px',
+                background: atLimit 
+                  ? 'rgba(255,255,255,0.08)' 
+                  : accent,
+                color: atLimit ? 'rgba(255,255,255,0.4)' : '#000',
+                border: atLimit 
+                  ? '1px solid rgba(255,255,255,0.1)' 
+                  : '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 999,
+                fontSize: 12, fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                width: isMobile ? '100%' : 'auto'
+              }}
+              onMouseEnter={(e) => {
+                if (!atLimit) {
+                  e.currentTarget.style.opacity = '0.88'
+                  e.currentTarget.style.transform = 'scale(1.02)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!atLimit) {
+                  e.currentTarget.style.opacity = '1'
+                  e.currentTarget.style.transform = 'scale(1)'
+                }
+              }}
+            >
+              {atLimit 
+                ? `⚡ Upgrade for more projects`
+                : <><Rocket size={14} /> New project</>
+              }
+            </button>
+          )
+        })()}
       </section>
 
       {/* SEARCH BAR */}

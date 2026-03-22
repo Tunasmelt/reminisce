@@ -44,49 +44,77 @@ export default function WizardPage() {
   const { isConnected, writeFile, initProject } = useFileSystem()
 
   const WIZARD_MODELS = [
-    // Free models (OpenRouter)
-    { 
-      provider: 'openrouter', 
+    // ── FREE TIER (OpenRouter, coins) ──────
+    {
+      provider: 'openrouter',
       model: 'meta-llama/llama-3.3-70b-instruct:free',
-      label: 'Llama 3.3 70B (Free)',
-      free: true
+      label: 'Llama 3.3 70B',
+      free: true,
+      note: '',
     },
-    { 
+    {
       provider: 'openrouter',
       model: 'google/gemini-2.0-flash-exp:free',
-      label: 'Gemini 2.0 Flash (Free)',
-      free: true
+      label: 'Gemini 2.0 Flash',
+      free: true,
+      note: '',
     },
-    { 
+    {
       provider: 'openrouter',
       model: 'mistralai/mistral-7b-instruct:free',
-      label: 'Mistral 7B (Free)',
-      free: true
+      label: 'Mistral 7B',
+      free: true,
+      note: '',
     },
-    // Paid models (direct APIs)
-    { 
-      provider: 'mistral', 
-      model: 'mistral-small-latest', 
+    {
+      provider: 'openrouter',
+      model: 'mistralai/mistral-small-3.1-24b-instruct:free',
+      label: 'Mistral Small 3.1',
+      free: true,
+      note: '',
+    },
+    {
+      provider: 'openrouter',
+      model: 'nvidia/llama-3.1-nemotron-super-49b-v1:free',
+      label: 'NVIDIA Nemotron Super',
+      free: true,
+      note: '',
+    },
+    {
+      provider: 'openrouter',
+      model: 'nvidia/llama-nemotron-nano-8b-instruct:free',
+      label: 'NVIDIA Nemotron Nano',
+      free: true,
+      note: '',
+    },
+    // ── PRO TIER (direct APIs, gems) ───────
+    {
+      provider: 'mistral',
+      model: 'mistral-small-latest',
       label: 'Mistral Small',
-      free: false
+      free: false,
+      note: '',
     },
-    { 
-      provider: 'mistral', 
-      model: 'mistral-large-latest', 
+    {
+      provider: 'mistral',
+      model: 'mistral-large-latest',
       label: 'Mistral Large',
-      free: false
+      free: false,
+      note: '',
     },
-    { 
-      provider: 'anthropic', 
-      model: 'claude-sonnet-4-20250514', 
+    {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
       label: 'Claude Sonnet',
-      free: false
+      free: false,
+      note: '',
     },
-    { 
-      provider: 'gemini', 
-      model: 'gemini-2.0-flash', 
-      label: 'Gemini Flash',
-      free: false
+    {
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+      label: 'Gemini Flash (Direct)',
+      free: false,
+      note: '',
     },
   ]
   

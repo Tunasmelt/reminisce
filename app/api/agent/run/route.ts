@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServiceSupabase, supabase as clientSupabase } from '@/lib/supabase'
-import { callAI } from '@/lib/ai-client'
-import { deductCost, refundCost, ensureWallet } from '@/lib/wallet'
+import { callAI, userHasOwnKey } from '@/lib/ai-client'
+import { deductCost, refundCost, ensureWallet, awardCoins } from '@/lib/wallet'
 
 export async function POST(req: Request) {
   try {
@@ -17,13 +17,17 @@ export async function POST(req: Request) {
     // Ensure wallet exists
     await ensureWallet(user.id)
     
-    // Deduct cost before run
-    const costResult = await deductCost(user.id, model)
-    if (!costResult.success) {
-      return NextResponse.json(
-        { error: costResult.message },
-        { status: 402 }
-      )
+    // Skip economy if user has their own key (BYOK)
+    const isBYOK = await userHasOwnKey(user.id, provider)
+    
+    if (!isBYOK) {
+      const costResult = await deductCost(user.id, model)
+      if (!costResult.success) {
+        return NextResponse.json(
+          { error: costResult.message },
+          { status: 402 }
+        )
+      }
     }
     
     if (!projectId || !provider || !model) {
@@ -132,40 +136,18 @@ ${contextText}
             if (done) break
             
             const chunk = decoder.decode(value, { stream: true })
-            
-            // For OpenRouter/Mistral, we might need to parse Server-Sent Events
-            // but for simplicity here we'll relay the raw chunks if they are text
-            // or perform minimal cleaning if it's JSON-wrapped.
-            // Actually, callAI returns the raw fetch Response.
-            
             controller.enqueue(value)
 
-            // For saving to DB later, let's try to extract text from chunks
-            // This varies by provider.
-            if (provider === 'gemini') {
-              try {
-                const lines = chunk.split('\n')
-                for (const line of lines) {
-                  if (line.trim().startsWith('[') || line.trim().startsWith(',')) {
-                    const cleanLine = line.trim().replace(/^,/, '')
-                    const parsed = JSON.parse(cleanLine)
-                    const text = parsed[0]?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-                    fullOutput += text
-                  }
-                }
-              } catch { /* ignore parse errors for partial chunks */ }
-            } else {
-              // OpenRouter/Mistral SSE format
-              const sseLines = chunk.split('\n')
-              for (const line of sseLines) {
-                if (line.startsWith('data: ')) {
-                  const dataStr = line.slice(6)
-                  if (dataStr === '[DONE]') continue
-                  try {
-                    const parsed = JSON.parse(dataStr)
-                    fullOutput += parsed.choices?.[0]?.delta?.content || ''
-                  } catch {}
-                }
+            // OpenRouter/Mistral SSE format cleaning or simple extraction
+            const sseLines = chunk.split('\n')
+            for (const line of sseLines) {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6)
+                if (dataStr === '[DONE]') continue
+                try {
+                  const parsed = JSON.parse(dataStr)
+                  fullOutput += parsed.choices?.[0]?.delta?.content || ''
+                } catch {}
               }
             }
           }
@@ -181,19 +163,30 @@ ${contextText}
             })
             .eq('id', run.id)
 
+          // Award first-run coins
+          try {
+            await awardCoins(
+              user.id,
+              'first_agent_run', 
+              projectId
+            )
+          } catch { /* non-fatal */ }
+
         } catch (error) {
           console.error('Stream error:', error)
           await supabase
             .from('agent_runs')
             .update({ 
                status: 'failed', 
-               output: fullOutput, // save whatever we got
+               output: fullOutput,
                error_message: error instanceof Error ? error.message : String(error)
             })
             .eq('id', run.id)
 
           // Refund on failure
-          await refundCost(user.id, model, run?.id)
+          if (!isBYOK) {
+            await refundCost(user.id, model, run?.id)
+          }
         } finally {
           controller.close()
         }

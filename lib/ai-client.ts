@@ -179,22 +179,32 @@ export async function callAI(params: {
       body: JSON.stringify({ model, messages, stream: !!stream, temperature, max_tokens }),
     })
   } else if (provider === 'minimax') {
-    res = await fetch('https://api.minimax.chat/v1/text/chatcompletion_v2', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        model, 
-        messages: messages.map(m => ({
-          sender_type: m.role === 'user' ? 'USER' : 'BOT',
-          sender_name: m.role === 'user' ? 'User' : 'Bot',
-          text: m.content
-        })), 
-        stream: !!stream 
-      }),
-    })
+    // MiniMax uses OpenAI-compatible format
+    res = await fetch(
+      'https://api.minimax.io/v1/text/chatcompletion_v2',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: messages.map(m => ({
+            role: m.role,
+            content: typeof m.content === 'string'
+              ? m.content
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              : (m.content as any).map((p: {type:string; text?:string}) =>
+                  p.text || ''
+                ).join(' ')
+          })),
+          stream: !!stream,
+          temperature: temperature || 0.7,
+          max_tokens: max_tokens || 2048,
+        }),
+      }
+    )
   } else if (provider === 'gemini') {
     const formattedContents = messages.map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -233,7 +243,48 @@ export async function callAI(params: {
   
   if (!res.ok) {
     const errorText = await res.text()
-    throw new Error(`Provider ${provider} error: ${errorText}`)
+    let errorMsg = `${provider} error (${res.status})`
+    
+    try {
+      const errJson = JSON.parse(errorText)
+      const detail = errJson?.error?.message 
+        || errJson?.message 
+        || errJson?.error
+        || errorText
+      errorMsg = `${provider} (${res.status}): ${detail}`
+    } catch {
+      errorMsg = `${provider} (${res.status}): ${errorText.slice(0, 200)}`
+    }
+    
+    // Specific known errors
+    if (res.status === 429) {
+      throw new Error(
+        `Rate limit reached on ${provider}. ` +
+        (provider === 'openrouter' 
+          ? 'Free models allow 20 req/min. Wait 60 seconds or upgrade your OpenRouter account.'
+          : 'Please wait a moment before trying again.')
+      )
+    }
+    if (res.status === 401) {
+      throw new Error(
+        `Invalid API key for ${provider}. ` +
+        'Check your key in Settings → Models.'
+      )
+    }
+    if (res.status === 402 || res.status === 403) {
+      throw new Error(
+        `${provider} requires payment or credits. ` +
+        'Add a payment method to your OpenRouter account (required even for free models).'
+      )
+    }
+    if (res.status === 404) {
+      throw new Error(
+        `Model "${model}" not found on ${provider}. ` +
+        'The model may have been renamed or removed.'
+      )
+    }
+    
+    throw new Error(errorMsg)
   }
   
   if (stream) {
@@ -241,4 +292,28 @@ export async function callAI(params: {
   }
   
   return await res.json()
+}
+
+export async function userHasOwnKey(
+  userId: string,
+  provider: string
+): Promise<boolean> {
+  try {
+    const { getServiceSupabase } = 
+      await import('@/lib/supabase')
+    const { decrypt } = 
+      await import('@/lib/encryption')
+    const supabase = getServiceSupabase()
+    const { data } = await supabase
+      .from('user_api_keys')
+      .select('encrypted_key')
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .single()
+    if (!data?.encrypted_key) return false
+    const key = decrypt(data.encrypted_key)
+    return key.length > 0
+  } catch {
+    return false
+  }
 }

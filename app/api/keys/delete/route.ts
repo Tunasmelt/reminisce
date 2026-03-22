@@ -13,6 +13,24 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // BYOK is Pro-only
+    const supabaseService = getServiceSupabase()
+    const { data: planData } = await supabaseService
+      .from('user_plans')
+      .select('plan')
+      .eq('user_id', user.id)
+      .single()
+    
+    if (!planData || planData.plan !== 'pro') {
+      return NextResponse.json(
+        { 
+          error: 'BYOK requires a Pro subscription.',
+          code: 'BYOK_PRO_REQUIRED'
+        },
+        { status: 403 }
+      )
+    }
+
     const { provider } = await req.json()
     if (!provider) return NextResponse.json({ error: 'Missing provider' }, { status: 400 })
 

@@ -5,5 +5,16 @@
   "installCommand": "npm install",
   "env": {
     "NEXT_PUBLIC_APP_URL": "@app-url"
-  }
+  },
+  "headers": [
+    {
+      "source": "/api/stripe/webhook",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    }
+  ]
 }

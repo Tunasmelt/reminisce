@@ -58,49 +58,77 @@ function AgentRunnerContent() {
   const [selectedModel, setSelectedModel] = useState('mistral-small-latest')
 
   const MODELS = [
-    // Free models (OpenRouter)
-    { 
-      provider: 'openrouter', 
+    // ── FREE TIER (OpenRouter, coins) ──────
+    {
+      provider: 'openrouter',
       model: 'meta-llama/llama-3.3-70b-instruct:free',
-      label: 'Llama 3.3 70B (Free)',
-      free: true
+      label: 'Llama 3.3 70B',
+      free: true,
+      note: '',
     },
-    { 
+    {
       provider: 'openrouter',
       model: 'google/gemini-2.0-flash-exp:free',
-      label: 'Gemini 2.0 Flash (Free)',
-      free: true
+      label: 'Gemini 2.0 Flash',
+      free: true,
+      note: '',
     },
-    { 
+    {
       provider: 'openrouter',
       model: 'mistralai/mistral-7b-instruct:free',
-      label: 'Mistral 7B (Free)',
-      free: true
+      label: 'Mistral 7B',
+      free: true,
+      note: '',
     },
-    // Paid models (direct APIs)
-    { 
-      provider: 'mistral', 
-      model: 'mistral-small-latest', 
+    {
+      provider: 'openrouter',
+      model: 'mistralai/mistral-small-3.1-24b-instruct:free',
+      label: 'Mistral Small 3.1',
+      free: true,
+      note: '',
+    },
+    {
+      provider: 'openrouter',
+      model: 'nvidia/llama-3.1-nemotron-super-49b-v1:free',
+      label: 'NVIDIA Nemotron Super',
+      free: true,
+      note: '',
+    },
+    {
+      provider: 'openrouter',
+      model: 'nvidia/llama-nemotron-nano-8b-instruct:free',
+      label: 'NVIDIA Nemotron Nano',
+      free: true,
+      note: '',
+    },
+    // ── PRO TIER (direct APIs, gems) ───────
+    {
+      provider: 'mistral',
+      model: 'mistral-small-latest',
       label: 'Mistral Small',
-      free: false
+      free: false,
+      note: '',
     },
-    { 
-      provider: 'mistral', 
-      model: 'mistral-large-latest', 
+    {
+      provider: 'mistral',
+      model: 'mistral-large-latest',
       label: 'Mistral Large',
-      free: false
+      free: false,
+      note: '',
     },
-    { 
-      provider: 'anthropic', 
-      model: 'claude-sonnet-4-20250514', 
+    {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
       label: 'Claude Sonnet',
-      free: false
+      free: false,
+      note: '',
     },
-    { 
-      provider: 'gemini', 
-      model: 'gemini-2.0-flash', 
-      label: 'Gemini Flash',
-      free: false
+    {
+      provider: 'gemini',
+      model: 'gemini-2.0-flash',
+      label: 'Gemini Flash (Direct)',
+      free: false,
+      note: '',
     },
   ]
   
@@ -245,7 +273,20 @@ function AgentRunnerContent() {
         }
       }
       loadHistory()
-    } catch (err) { toast.error(err instanceof Error ? err.message : String(err)) }
+    } catch (err) {
+      const msg = err instanceof Error 
+        ? err.message : String(err)
+      
+      if (msg.includes('Rate limit') 
+          || msg.includes('429')) {
+        toast.error(msg, { 
+          duration: 8000,
+          description: 'Free models have a 20 req/min limit per IP address.'
+        })
+      } else {
+        toast.error(msg, { duration: 6000 })
+      }
+    }
     finally { setIsRunning(false) }
   }
 
@@ -327,25 +368,47 @@ function AgentRunnerContent() {
           width={160}
           compact
         />
+
+        {selectedModel.includes(':free') && (
+          <span style={{
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.2)',
+            fontStyle: 'italic',
+            display: 'flex', alignItems: 'center',
+            gap: 4,
+          }}
+          title="OpenRouter free models require a payment method on your OpenRouter account. Rate limit: 20 req/min."
+          >
+            ⓘ requires openrouter.ai account
+          </span>
+        )}
   
         {(() => {
           const MODEL_COSTS: Record<string, {
             currency: string, amount: number
           }> = {
-            'meta-llama/llama-3.3-70b-instruct:free': 
+            'meta-llama/llama-3.3-70b-instruct:free':
               { currency: 'coins', amount: 1 },
-            'google/gemini-2.0-flash-exp:free':       
+            'google/gemini-2.0-flash-exp:free':
               { currency: 'coins', amount: 1 },
-            'mistralai/mistral-7b-instruct:free':     
+            'mistralai/mistral-7b-instruct:free':
               { currency: 'coins', amount: 1 },
-            'mistral-small-latest':    
+            'mistralai/mistral-small-3.1-24b-instruct:free':
+              { currency: 'coins', amount: 1 },
+            'nvidia/llama-3.1-nemotron-super-49b-v1:free':
+              { currency: 'coins', amount: 1 },
+            'nvidia/llama-nemotron-nano-8b-instruct:free':
+              { currency: 'coins', amount: 1 },
+            'mistral-small-latest':
               { currency: 'gems', amount: 1 },
-            'mistral-large-latest':    
+            'mistral-large-latest':
               { currency: 'gems', amount: 2 },
+            'gemini-2.0-flash':
+              { currency: 'gems', amount: 1 },
             'claude-sonnet-4-20250514':
               { currency: 'gems', amount: 3 },
-            'gemini-2.0-flash':        
-              { currency: 'gems', amount: 1 },
+            'gpt-4o':
+              { currency: 'gems', amount: 3 },
           }
           const cost = MODEL_COSTS[selectedModel]
           if (!cost) return null
