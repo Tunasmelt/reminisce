@@ -161,9 +161,20 @@ export default function SettingsPage() {
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '32px 20px' : '48px 32px' }} className="page-enter">
       <title>{`Settings — ${project?.name}`}</title>
-      
-      <div style={{ marginBottom: 48 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em', marginBottom: 4 }}>
+           <div style={{ marginBottom: 48 }}>
+        <div style={{
+          fontSize: 9, fontWeight: 700,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase',
+          color: accent, marginBottom: 6,
+        }}>
+          Project Configuration
+        </div>
+        <h1 style={{
+          fontSize: 28, fontWeight: 800,
+          color: '#fff', letterSpacing: '-0.01em',
+          marginBottom: 6,
+        }}>
           Settings
         </h1>
         <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)' }}>
@@ -297,7 +308,15 @@ export default function SettingsPage() {
             </h3>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.45)', textTransform: 'none', letterSpacing: 'normal', display: 'block', marginBottom: 8 }}>Project name</label>
+              <div style={{
+                fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.35)',
+                marginBottom: 6,
+              }}>
+                Project Name
+              </div>
               <input 
                 type="text" 
                 value={project.name}
@@ -315,7 +334,15 @@ export default function SettingsPage() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Project Type</label>
+              <div style={{
+                fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.35)',
+                marginBottom: 6,
+              }}>
+                Project Type
+              </div>
               <input 
                 type="text" 
                 value={project.type}
@@ -325,7 +352,15 @@ export default function SettingsPage() {
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <label style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>Cluster Assignment</label>
+              <div style={{
+                fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.35)',
+                marginBottom: 6,
+              }}>
+                Cluster Assignment
+              </div>
               <input 
                 type="text" 
                 value={project.cluster}
@@ -348,20 +383,65 @@ export default function SettingsPage() {
               SAVE CHANGES
             </button>
 
-            <div style={{ marginTop: 48, border: '1px solid rgba(239,68,68,0.2)', borderRadius: 16, padding: 24 }}>
-              <h4 style={{ fontSize: 11, fontWeight: 600, color: '#ef4444', textTransform: 'none', letterSpacing: 'normal', marginBottom: 16 }}>Danger zone</h4>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Deleting this mission will purge all archived metadata, feature specs, and context engine versions. This action is irreversible.</p>
-              <button 
-                onClick={handleDeleteProject}
-                style={{
-                  border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', background: 'transparent',
-                  borderRadius: 8, padding: '10px 20px', fontSize: 12, fontWeight: 700, 
-                  textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.2s'
+            <div style={{
+              marginTop: 32,
+              border: '1px solid rgba(239,68,68,0.25)',
+              borderRadius: 12, padding: '20px 24px',
+              background: 'rgba(239,68,68,0.04)',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                gap: 8, marginBottom: 8,
+              }}>
+                <span style={{
+                  color: '#ef4444', fontSize: 16,
+                }}>⚠</span>
+                <span style={{
+                  fontSize: 13, fontWeight: 700,
+                  color: '#ef4444',
+                }}>
+                  Danger Zone
+                </span>
+              </div>
+              <p style={{
+                fontSize: 13,
+                color: 'rgba(255,255,255,0.4)',
+                lineHeight: 1.6, marginBottom: 16,
+              }}>
+                Deleting this project will permanently 
+                purge all archived metadata, feature 
+                specs, and context engine versions. 
+                This action is irreversible and cannot 
+                be undone.
+              </p>
+              <button
+                onClick={() => {
+                  if (confirm('Delete this project? This cannot be undone.')) {
+                    handleDeleteProject()
+                  }
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                style={{
+                  padding: '8px 20px',
+                  border: '1px solid #ef4444',
+                  borderRadius: 8,
+                  background: 'transparent',
+                  color: '#ef4444',
+                  fontSize: 11, fontWeight: 800,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background =
+                    'rgba(239,68,68,0.1)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background =
+                    'transparent'
+                }}
               >
-                DELETE PROJECT
+                Delete Project
               </button>
             </div>
           </div>

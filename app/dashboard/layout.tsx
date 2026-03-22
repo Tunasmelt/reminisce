@@ -14,10 +14,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const { accent } = useTheme()
   const [user, setUser] = useState<User | null>(null)
+  const [wallet, setWallet] = useState<{ gems: number, coins: number } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setUser(data.user)
+        // Fetch or create wallet
+        supabase
+          .from('user_wallets')
+          .select('gems, coins')
+          .eq('user_id', data.user.id)
+          .single()
+          .then(({ data: walletData }) => {
+            if (walletData) {
+              setWallet(walletData)
+            } else {
+              // Create wallet for existing users
+              supabase
+                .from('user_wallets')
+                .upsert({ 
+                  user_id: data.user.id, 
+                  gems: 0, 
+                  coins: 100 
+                }, { onConflict: 'user_id' })
+                .then(() => 
+                  setWallet({ gems: 0, coins: 100 })
+                )
+            }
+          })
+      }
+    })
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
     window.addEventListener('resize', check)
@@ -82,6 +110,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Right: Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 16 }}>
+            {wallet !== null && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '5px 12px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 999,
+                fontSize: 12,
+                cursor: 'default',
+              }}
+              title={`${wallet.gems} gems (premium) · ${wallet.coins} coins (free)`}
+              >
+                <span style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 4,
+                  color: '#a78bfa',
+                  fontWeight: 600,
+                }}>
+                  💎 {wallet.gems}
+                </span>
+                <span style={{ 
+                  color: 'rgba(255,255,255,0.2)',
+                  fontSize: 10,
+                }}>·</span>
+                <span style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 4,
+                  color: 'rgba(255,255,255,0.5)',
+                  fontWeight: 500,
+                }}>
+                  🪙 {wallet.coins}
+                </span>
+              </div>
+            )}
             <ThemeToggle />
             
             <div style={{

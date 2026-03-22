@@ -7,6 +7,13 @@ import LandingNav from '@/components/landing-nav'
 
 const inter = Inter({ subsets: ['latin'] })
 
+function hexToRgba(hex: string, a: number) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
 export default function DocsPage() {
   const { accent } = useTheme()
   const [activeSection, setActiveSection] = useState('introduction')
@@ -156,21 +163,52 @@ export default function DocsPage() {
             </div>
           </section>
 
-          {/* Placeholders */}
-          {['context-api', 'ai-routing', 'prompt-wizard', 'memory-graphs', 'export', 'coming-soon'].map(id => (
-            <section key={id} id={id} style={{ marginBottom: 40 }}>
-              <div style={{ 
-                background: 'rgba(255,255,255,0.02)', 
-                border: '1px dashed rgba(255,255,255,0.08)', 
-                borderRadius: 8, 
-                padding: 24,
-                textAlign: 'center'
+          {/* Coming Soon Sections */}
+          <div style={{ marginTop: 20 }}>
+            {[
+              'Context API Reference',
+              'AI Routing Configuration',
+              'Memory Graph Schema',
+              'Export Format Spec',
+            ].map(item => (
+              <div key={item} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '16px 20px',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 8, marginBottom: 8,
+                cursor: 'default',
               }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: accent, letterSpacing: '0.1em', marginBottom: 8 }}>COMING SOON</div>
-                <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)' }}>This section is under construction.</div>
+                <span style={{
+                  fontSize: 13, fontWeight: 500,
+                  color: 'rgba(255,255,255,0.55)',
+                }}>
+                  {item}
+                </span>
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  gap: 8,
+                }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700,
+                    padding: '3px 8px', borderRadius: 999,
+                    border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    color: accent,
+                    background: hexToRgba(accent, 0.08),
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                  }}>
+                    Coming Soon
+                  </span>
+                  <span style={{
+                    color: 'rgba(255,255,255,0.2)',
+                    fontSize: 14,
+                  }}>→</span>
+                </div>
               </div>
-            </section>
-          ))}
+            ))}
+          </div>
         </div>
       </main>
 

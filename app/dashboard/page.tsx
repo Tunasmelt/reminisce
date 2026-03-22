@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Rocket, Plus, ChevronRight } from 'lucide-react'
+import { Rocket, Plus } from 'lucide-react'
 import { 
   Dialog, 
   DialogContent, 
@@ -57,6 +57,7 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [projectStats, setProjectStats] = useState<Record<string, ProjectStats>>({})
+  const [searchQuery, setSearchQuery] = useState('')
 
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false)
@@ -122,7 +123,15 @@ export default function DashboardPage() {
   }
 
   const [selectedWS, setSelectedWS] = useState<string | 'all'>('all')
-  const filteredProjects = selectedWS === 'all' ? projects : projects.filter(p => p.workspace_id === selectedWS)
+  const filteredProjects = (selectedWS === 'all' 
+    ? projects 
+    : projects.filter(p => p.workspace_id === selectedWS)
+  ).filter(p => 
+    !searchQuery || 
+    p.name.toLowerCase().includes(
+      searchQuery.toLowerCase()
+    )
+  )
 
   if (loading) {
     return (
@@ -218,6 +227,43 @@ export default function DashboardPage() {
         </button>
       </section>
 
+      {/* SEARCH BAR */}
+      <div style={{
+        marginBottom: 20,
+        position: 'relative',
+      }}>
+        <input
+          type="text"
+          placeholder="Search projects..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 10,
+            padding: '10px 16px 10px 40px',
+            fontSize: 13, color: '#fff',
+            outline: 'none', fontFamily: 'inherit',
+            boxSizing: 'border-box',
+          }}
+          onFocus={e => {
+            e.currentTarget.style.borderColor = accent
+          }}
+          onBlur={e => {
+            e.currentTarget.style.borderColor =
+              'rgba(255,255,255,0.08)'
+          }}
+        />
+        <span style={{
+          position: 'absolute',
+          left: 14, top: '50%',
+          transform: 'translateY(-50%)',
+          color: 'rgba(255,255,255,0.3)',
+          fontSize: 14,
+        }}>⌕</span>
+      </div>
+
       {/* CLUSTER FILTER TABS */}
       <div style={{ 
         display: 'flex', 
@@ -302,73 +348,163 @@ export default function DashboardPage() {
                 e.currentTarget.style.transform = 'translateY(0)'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{
-                  fontSize: 10,
-                  fontWeight: 500,
-                  letterSpacing: 'normal',
-                  padding: '4px 10px',
+              {/* Top row: workspace badge + active dot */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 14,
+              }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  padding: '3px 8px',
                   borderRadius: 999,
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'rgba(255,255,255,0.5)'
+                  background: hexToRgba(accent, 0.1),
+                  border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                  color: accent,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
                 }}>
                   {p.workspaces?.name || 'General'}
-                </div>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: accent }} />
+                </span>
+                <span style={{
+                  display: 'flex', alignItems: 'center',
+                  gap: 5, fontSize: 10, fontWeight: 600,
+                  color: '#10b981',
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: '#10b981',
+                    animation: 'agentPulse 2s infinite',
+                    display: 'inline-block',
+                  }} />
+                  Active
+                </span>
               </div>
 
-              <h2 style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em', color: '#fff', marginTop: 16, marginBottom: 4 }}>
+              {/* Project name */}
+              <h2 style={{
+                fontSize: 20, fontWeight: 700,
+                letterSpacing: '-0.01em', color: '#fff',
+                margin: '0 0 4px',
+              }}>
                 {p.name}
               </h2>
-              <div style={{ fontSize: 13, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginBottom: 24 }}>
-                {p.description ? (p.description.length > 60 ? p.description.slice(0, 60) + '...' : p.description) : 'No description'}
+              <div style={{
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.35)',
+                marginBottom: 16,
+              }}>
+                {p.description || 'No description'}
               </div>
 
-              <div style={{ display: 'flex', gap: 32 }}>
-                <div>
-                  <span style={{ fontSize: 24, fontWeight: 900, color: '#fff' }}>{stats?.phasesCount || 0}</span>
-                  <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.3)', display: 'block', marginTop: 2 }}>Phases</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: 24, fontWeight: 900, color: '#fff' }}>{stats?.featuresCount || 0}</span>
-                  <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.3)', display: 'block', marginTop: 2 }}>Features</span>
-                </div>
-              </div>
-
-              {stats?.lastRun && (
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', marginTop: 8 }}>
-                  Last run {new Date(stats.lastRun).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+              {/* Progress bar */}
+              {stats && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: 6,
+                  }}>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      color: 'rgba(255,255,255,0.3)',
+                    }}>
+                      Progress
+                    </span>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700,
+                      color: accent,
+                    }}>
+                      {stats.featuresCount > 0
+                        ? '0%'
+                        : '—'}
+                    </span>
+                  </div>
+                  <div style={{
+                    height: 3,
+                    background: 'rgba(255,255,255,0.07)',
+                    borderRadius: 999,
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: '24%',
+                      background: accent,
+                      borderRadius: 999,
+                    }} />
+                  </div>
                 </div>
               )}
 
-              <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Stats row */}
+              <div style={{
+                display: 'flex',
+                gap: 16,
+                marginBottom: 16,
+              }}>
+                <span style={{
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.45)',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}>
+                  <span style={{ fontSize: 13 }}>⊕</span>
+                  {stats?.phasesCount || 0} phases
+                </span>
+                <span style={{
+                  fontSize: 12,
+                  color: 'rgba(255,255,255,0.45)',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}>
+                  <span style={{ fontSize: 13 }}>↗</span>
+                  {stats?.featuresCount || 0} features
+                </span>
+                {stats?.lastRun && (
+                  <span style={{
+                    fontSize: 11,
+                    color: 'rgba(255,255,255,0.25)',
+                    display: 'flex', alignItems: 'center',
+                    gap: 4, marginLeft: 'auto',
+                  }}>
+                    ◷ {new Date(stats.lastRun)
+                      .toLocaleDateString([], {
+                        month: 'short', day: 'numeric'
+                      })}
+                  </span>
+                )}
+              </div>
+
+              {/* Open button */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+              }}>
                 <button
-                  onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/projects/${p.id}`) }}
+                  onClick={e => {
+                    e.stopPropagation()
+                    router.push(`/dashboard/projects/${p.id}`)
+                  }}
                   style={{
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 999,
-                    padding: '8px 16px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    letterSpacing: 'normal',
-                    color: 'rgba(255,255,255,0.7)',
-                    background: 'transparent',
+                    display: 'flex', alignItems: 'center',
+                    gap: 5, fontSize: 12, fontWeight: 600,
+                    color: 'rgba(255,255,255,0.5)',
+                    background: 'transparent', border: 'none',
                     cursor: 'pointer',
-                    transition: 'all 0.2s'
+                    transition: 'color 0.15s',
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = accent
+                  onMouseEnter={e =>
                     e.currentTarget.style.color = accent
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
-                    e.currentTarget.style.color = 'rgba(255,255,255,0.7)'
-                  }}
+                  }
+                  onMouseLeave={e =>
+                    e.currentTarget.style.color =
+                      'rgba(255,255,255,0.5)'
+                  }
                 >
-                  Open
+                  Open →
                 </button>
-                <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
               </div>
             </div>
           )
@@ -403,70 +539,107 @@ export default function DashboardPage() {
             New project
           </div>
         </div>
-      </div>
-
-      {/* CLUSTER TOPOGRAPHY SECTION */}
-      <section style={{ marginTop: 80, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 48 }}>
-        <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 16 }}>
-          CLUSTER TOPOGRAPHY
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {workspaces.map(w => (
-            <div 
-              key={w.id}
+      </div>       {workspaces.length > 0 && (
+        <div style={{
+          marginTop: 48,
+          padding: '20px 24px',
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 12,
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8, marginBottom: 14,
+          }}>
+            <span style={{ fontSize: 14 }}>⊞</span>
+            <span style={{
+              fontSize: 9, fontWeight: 700,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.3)',
+            }}>
+              Cluster Topography
+            </span>
+          </div>
+          <div style={{
+            display: 'flex', gap: 8,
+            flexWrap: 'wrap',
+          }}>
+            {workspaces.map(w => (
+              <button
+                key={w.id}
+                onClick={() => setSelectedWS(w.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center', gap: 6,
+                  padding: '6px 14px',
+                  borderRadius: 999,
+                  border: `1px solid ${
+                    selectedWS === w.id
+                      ? accent
+                      : 'rgba(255,255,255,0.15)'
+                  }`,
+                  background: selectedWS === w.id
+                    ? hexToRgba(accent, 0.1)
+                    : 'rgba(255,255,255,0.04)',
+                  color: selectedWS === w.id
+                    ? accent
+                    : 'rgba(255,255,255,0.6)',
+                  fontSize: 11, fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {w.name}
+                <span style={{
+                  fontSize: 9,
+                  background: selectedWS === w.id
+                    ? hexToRgba(accent, 0.2)
+                    : 'rgba(255,255,255,0.1)',
+                  borderRadius: 999,
+                  padding: '1px 6px',
+                  color: selectedWS === w.id
+                    ? accent
+                    : 'rgba(255,255,255,0.4)',
+                }}>
+                  {projects.filter(
+                    p => p.workspace_id === w.id
+                  ).length}
+                </span>
+              </button>
+            ))}
+            <button
+              onClick={() => setIsWorkspaceOpen(true)}
               style={{
-                padding: '8px 20px',
+                padding: '6px 14px',
                 borderRadius: 999,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                border: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.03)',
-                color: 'rgba(255,255,255,0.5)',
-                transition: 'all 0.2s',
-                cursor: 'default'
+                border: '1px dashed rgba(255,255,255,0.12)',
+                background: 'transparent',
+                color: 'rgba(255,255,255,0.3)',
+                fontSize: 11, fontWeight: 600,
+                letterSpacing: '0.06em',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = hexToRgba(accent, 0.3)
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = accent
                 e.currentTarget.style.color = accent
               }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                e.currentTarget.style.color = 'rgba(255,255,255,0.5)'
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor =
+                  'rgba(255,255,255,0.12)'
+                e.currentTarget.style.color =
+                  'rgba(255,255,255,0.3)'
               }}
             >
-              {w.name}
-            </div>
-          ))}
-          <button 
-            onClick={() => setIsWorkspaceOpen(true)}
-            style={{
-              padding: '8px 20px',
-              borderRadius: 999,
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              border: '1px dashed rgba(255,255,255,0.1)',
-              background: 'rgba(255,255,255,0.03)',
-              color: 'rgba(255,255,255,0.2)',
-              transition: 'all 0.2s',
-              cursor: 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = hexToRgba(accent, 0.3)
-              e.currentTarget.style.color = accent
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-              e.currentTarget.style.color = 'rgba(255,255,255,0.2)'
-            }}
-          >
-            + NEW_CLUSTER
-          </button>
+              + New Cluster
+            </button>
+          </div>
         </div>
-      </section>
+      )}
 
       {/* Dialogs */}
       <Dialog open={isProjectOpen} onOpenChange={setIsProjectOpen}>

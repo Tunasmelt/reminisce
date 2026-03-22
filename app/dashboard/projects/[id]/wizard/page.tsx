@@ -10,6 +10,7 @@ import { ArrowUp, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { useTheme } from '@/hooks/useTheme'
+import { useFileSystem } from '@/hooks/useFileSystem'
 
 type Message = { role: 'user' | 'assistant' | 'system', content: string }
 
@@ -34,27 +35,59 @@ export default function WizardPage() {
   const [isTyping, setIsTyping] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [rightTab, setRightTab] = useState<'preview' | 'prompts' | 'files'>('preview')
+  const [collectedAnswers, setCollectedAnswers] = useState<Record<string, string>>({})
   
-  const [selectedProvider, setSelectedProvider] = useState('mistral')
-  const [selectedModel, setSelectedModel] = useState('mistral-small-latest')
+  const [selectedProvider, setSelectedProvider] = useState('openrouter')
+  const [selectedModel, setSelectedModel] = useState('meta-llama/llama-3.3-70b-instruct:free')
   const initialized = useRef(false)
 
+  const { isConnected, writeFile, initProject } = useFileSystem()
+
   const WIZARD_MODELS = [
-    { provider: 'mistral',
-      model: 'mistral-small-latest',
-      label: 'Mistral Small' },
-    { provider: 'mistral',
-      model: 'mistral-large-latest',
-      label: 'Mistral Large' },
-    { provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
-      label: 'Claude Sonnet' },
-    { provider: 'openai',
-      model: 'gpt-4o',
-      label: 'GPT-4o' },
-    { provider: 'google',
-      model: 'gemini-2.0-flash',
-      label: 'Gemini Flash' },
+    // Free models (OpenRouter)
+    { 
+      provider: 'openrouter', 
+      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      label: 'Llama 3.3 70B (Free)',
+      free: true
+    },
+    { 
+      provider: 'openrouter',
+      model: 'google/gemini-2.0-flash-exp:free',
+      label: 'Gemini 2.0 Flash (Free)',
+      free: true
+    },
+    { 
+      provider: 'openrouter',
+      model: 'mistralai/mistral-7b-instruct:free',
+      label: 'Mistral 7B (Free)',
+      free: true
+    },
+    // Paid models (direct APIs)
+    { 
+      provider: 'mistral', 
+      model: 'mistral-small-latest', 
+      label: 'Mistral Small',
+      free: false
+    },
+    { 
+      provider: 'mistral', 
+      model: 'mistral-large-latest', 
+      label: 'Mistral Large',
+      free: false
+    },
+    { 
+      provider: 'anthropic', 
+      model: 'claude-sonnet-4-20250514', 
+      label: 'Claude Sonnet',
+      free: false
+    },
+    { 
+      provider: 'gemini', 
+      model: 'gemini-2.0-flash', 
+      label: 'Gemini Flash',
+      free: false
+    },
   ]
   
   interface GeneratedBlueprint {
@@ -172,6 +205,35 @@ export default function WizardPage() {
           }
         }
       }
+
+      // ── EXTRACTION LOGIC ──
+      const lastAI = assistantMsg || ''
+      const newAnswers = { ...collectedAnswers }
+      
+      if (lastAI.toLowerCase().includes('react') || lastAI.toLowerCase().includes('next')) {
+        newAnswers['Tech stack'] = 'React / Next.js'
+      }
+      if (lastAI.toLowerCase().includes('vercel')) {
+        newAnswers['Deployment'] = 'Vercel'
+      }
+      if (lastAI.toLowerCase().includes('mongodb') || lastAI.toLowerCase().includes('postgres') || lastAI.toLowerCase().includes('supabase')) {
+        newAnswers['Database'] = lastAI.toLowerCase().includes('mongodb') ? 'MongoDB' : lastAI.toLowerCase().includes('supabase') ? 'Supabase' : 'PostgreSQL'
+      }
+      
+      const userMsgs = [...messages, { role: 'user', content: currentInput }].filter(m => m.role === 'user')
+      userMsgs.forEach(msg => {
+        const lower = msg.content.toLowerCase()
+        if (lower.includes('week') || lower.includes('month')) {
+          newAnswers['Timeline'] = msg.content
+        }
+        if (lower.includes('beginner') || lower.includes('junior') || lower.includes('senior')) {
+          newAnswers['Difficulty'] = msg.content
+        }
+      })
+      
+      if (Object.keys(newAnswers).length > 0) {
+        setCollectedAnswers(newAnswers)
+      }
     } catch {
       toast.error('Transmission failure')
     } finally {
@@ -195,6 +257,39 @@ export default function WizardPage() {
       const data = await res.json()
       setGeneratedData(data)
       toast.success('Blueprint Generated')
+
+      // Write files to local disk if folder connected
+      if (isConnected && data.markdownFiles) {
+        try {
+          // Initialize folder structure first
+          await initProject()
+          
+          // Write each generated file
+          const fileEntries = Object.entries(
+            data.markdownFiles as Record<string, string>
+          )
+          let written = 0
+          for (const [filePath, content] of fileEntries) {
+            try {
+              await writeFile(
+                `reminisce/${filePath}`, 
+                content
+              )
+              written++
+            } catch (fileErr) {
+              console.warn(`Could not write ${filePath}:`, fileErr)
+            }
+          }
+          if (written > 0) {
+            toast.success(
+              `${written} files written to local folder`
+            )
+          }
+        } catch (fsErr) {
+          console.warn('Local write failed:', fsErr)
+          // Non-fatal — generation still succeeded
+        }
+      }
     } catch {
       toast.error('Generation failed')
     } finally {
@@ -309,7 +404,9 @@ export default function WizardPage() {
             }}
             options={WIZARD_MODELS.map(m => ({
               value: m.model,
-              label: m.label,
+              label: m.free 
+                ? `${m.label} ★` 
+                : m.label,
             }))}
             width={160}
             compact
@@ -844,6 +941,55 @@ export default function WizardPage() {
                   )}
                 </div>
               )}
+
+              {/* Collected answers monitor */}
+              {!generatedData && Object.keys(collectedAnswers).length > 0 && (
+                <div>
+                  <div style={{
+                    fontSize: 9, fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,255,255,0.25)',
+                    marginBottom: 10,
+                  }}>
+                    Collected Answers
+                  </div>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column',
+                    gap: 1,
+                  }}>
+                    {Object.entries(collectedAnswers)
+                      .map(([key, val]) => (
+                      <div key={key} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '8px 12px',
+                        background: 'rgba(255,255,255,0.03)',
+                        borderRadius: 6,
+                      }}>
+                        <span style={{
+                          fontSize: 11,
+                          color: 'rgba(255,255,255,0.35)',
+                        }}>
+                          {key}
+                        </span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 600,
+                          color: 'rgba(255,255,255,0.7)',
+                          textAlign: 'right',
+                          maxWidth: '60%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {val}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
   
               {/* Generated blueprint */}
               {generatedData && (
@@ -1174,6 +1320,28 @@ export default function WizardPage() {
                   display: 'flex', flexDirection: 'column',
                   gap: 6,
                 }}>
+                  {isConnected ? (
+                    <div style={{
+                      marginBottom: 12, padding: '8px 12px',
+                      background: 'rgba(16,185,129,0.08)',
+                      border: '1px solid rgba(16,185,129,0.2)',
+                      borderRadius: 8, fontSize: 11,
+                      color: '#10b981',
+                    }}>
+                      ✓ Files synced to local folder
+                    </div>
+                  ) : (
+                    <div style={{
+                      marginBottom: 12, padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 8, fontSize: 11,
+                      color: 'rgba(255,255,255,0.35)',
+                    }}>
+                      Connect a folder on the Overview page 
+                      to sync files locally
+                    </div>
+                  )}
                   <div style={{
                     fontSize: 10, fontWeight: 700,
                     color: 'rgba(255,255,255,0.3)',

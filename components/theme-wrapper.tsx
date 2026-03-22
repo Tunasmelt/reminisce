@@ -15,10 +15,9 @@ export default function ThemeWrapper({
   
   return (
     <div style={{ 
-      opacity: mounted ? 1 : 0,
-      transition: 'opacity 100ms ease',
+      visibility: mounted ? 'visible' : 'hidden',
       minHeight: '100vh',
-      background: '#000'
+      background: '#000',
     }}>
       {children}
     </div>

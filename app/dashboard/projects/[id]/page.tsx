@@ -6,17 +6,10 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { useTheme } from '@/hooks/useTheme'
-import { Download } from 'lucide-react'
+import { FolderOpen } from 'lucide-react'
 import ExportBriefModal from '@/components/ExportBriefModal'
+import { useFileSystem } from '@/hooks/useFileSystem'
 
-interface DashboardStats {
-  phasesCount: number
-  phasesComplete: number
-  featuresCount: number
-  featuresComplete: number
-  contextsCount: number
-  lastUpdatedContext: string | null
-}
 
 interface Project {
   id: string
@@ -43,15 +36,26 @@ interface Feature {
   phases?: { name: string }
 }
 
+function hexToRgba(hex: string, a: number) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
 export default function ProjectOverviewPage() {
   const params = useParams()
   const router = useRouter()
   const { accent } = useTheme()
   const projectId = params.id as string
+
+  const { 
+    isConnected, isSupported, 
+    openFolder 
+  } = useFileSystem()
   
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<DashboardStats | null>(null)
   const [phases, setPhases] = useState<Phase[]>([])
   const [features, setFeatures] = useState<Feature[]>([])
   const [contextDoc, setContextDoc] = useState('')
@@ -59,11 +63,10 @@ export default function ProjectOverviewPage() {
   
   const loadData = useCallback(async () => {
     try {
-      const [{ data: proj }, { data: pData }, { data: fData }, { data: contexts }, { data: ctxData }] = await Promise.all([
+      const [{ data: proj }, { data: pData }, { data: fData }, { data: ctxData }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', projectId).single(),
         supabase.from('phases').select('*').eq('project_id', projectId).order('order_index', { ascending: true }),
         supabase.from('features').select('*, phases(name)').eq('project_id', projectId).order('created_at', { ascending: false }),
-        supabase.from('context_versions').select('id, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
         supabase.from('context_versions').select('content').eq('project_id', projectId).order('created_at', { ascending: false }).limit(1).maybeSingle()
       ])
       
@@ -73,14 +76,6 @@ export default function ProjectOverviewPage() {
       setFeatures(fData || [])
       setContextDoc(ctxData?.content || '')
 
-      setStats({
-        phasesCount: pData?.length || 0,
-        phasesComplete: pData?.filter(p => p.status === 'completed').length || 0,
-        featuresCount: fData?.length || 0,
-        featuresComplete: fData?.filter(f => f.status === 'completed').length || 0,
-        contextsCount: contexts?.length || 0,
-        lastUpdatedContext: contexts?.[0]?.created_at || null
-      })
     } catch (err) { 
       console.error(err)
       toast.error('Query failure'); 
@@ -106,65 +101,338 @@ export default function ProjectOverviewPage() {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '48px 32px' }}>
       <title>{`Reminisce — Overview — ${project.name}`}</title>
       
-      {/* PROJECT HERO */}
-      <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 64 }}>
-        <div>
-          <h1 style={{ fontSize: 'clamp(36px, 4vw, 56px)', fontWeight: 800, color: '#fff', margin: 0, lineHeight: 1 }}>
-            {project.name}
-          </h1>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginTop: 8 }}>
-            {project.description || 'No description'}
-          </div>
+      {/* Live indicator + name */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          gap: 8, marginBottom: 8,
+        }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: '50%',
+            background: '#10b981',
+            display: 'inline-block',
+            animation: 'agentPulse 2s infinite',
+          }} />
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: 'rgba(255,255,255,0.35)',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+          }}>
+            Live · {project?.name}
+          </span>
         </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 24 }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+        }}>
+          <div>
+            <h1 style={{
+              fontSize: 36, fontWeight: 800,
+              color: '#fff', letterSpacing: '-0.02em',
+              margin: '0 0 4px',
+            }}>
+              {project?.name}
+            </h1>
+            <div style={{
+              fontSize: 13,
+              color: 'rgba(255,255,255,0.35)',
+            }}>
+              {project?.description || 'No description'}
+            </div>
+          </div>
           <button
             onClick={() => setShowExport(true)}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '10px 20px',
-              border: `1px solid rgba(255,255,255,0.12)`,
-              borderRadius: 8,
-              background: 'transparent',
-              color: 'rgba(255,255,255,0.6)',
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: 'normal',
-              textTransform: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center',
+              gap: 6, padding: '8px 16px',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8, background: 'transparent',
+              color: 'rgba(255,255,255,0.5)',
+              fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', transition: 'all 0.15s',
             }}
             onMouseEnter={e => {
               e.currentTarget.style.borderColor = accent
-              e.currentTarget.style.color = '#fff'
+              e.currentTarget.style.color = accent
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
-              e.currentTarget.style.color = 'rgba(255,255,255,0.6)'
+              e.currentTarget.style.borderColor =
+                'rgba(255,255,255,0.1)'
+              e.currentTarget.style.color =
+                'rgba(255,255,255,0.5)'
             }}
           >
-            <Download size={14} />
-            Export brief
+            ↓ Export Brief
           </button>
+        </div>
+      </div>
 
-          <div style={{ display: 'flex', gap: 40 }}>
-            <div>
-              <div style={{ fontSize: 32, fontWeight: 900, color: '#fff' }}>{stats?.phasesCount || 0}</div>
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.35)', letterSpacing: 'normal', textTransform: 'none' }}>Phases</div>
+      {/* 4 stat cards row */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: 12, marginBottom: 24,
+      }}>
+        {[
+          { icon: '⊕', value: phases.length,
+            label: 'Phases', color: accent },
+          { icon: '</>', value: features.length,
+            label: 'Features', color: '#3b82f6' },
+          { icon: '↗', value: 0,
+            label: 'Active', color: '#10b981' },
+          { icon: '◎', value: '0%',
+            label: 'Progress', color: accent },
+        ].map((stat, i) => (
+          <div key={i} style={{
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 10, padding: '14px 16px',
+            display: 'flex', alignItems: 'center',
+            gap: 12,
+          }}>
+            <div style={{
+              width: 36, height: 36,
+              borderRadius: 8,
+              background: `${stat.color}15`,
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 16, flexShrink: 0,
+            }}>
+              {stat.icon}
             </div>
             <div>
-              <div style={{ fontSize: 32, fontWeight: 900, color: '#fff' }}>{stats?.featuresCount || 0}</div>
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.35)', letterSpacing: 'normal', textTransform: 'none' }}>Features</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 32, fontWeight: 900, color: '#fff' }}>{stats?.contextsCount || 0}</div>
-              <div style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.35)', letterSpacing: 'normal', textTransform: 'none' }}>Context files</div>
+              <div style={{
+                fontSize: 22, fontWeight: 800,
+                color: stat.color, lineHeight: 1,
+                marginBottom: 2,
+              }}>
+                {stat.value}
+              </div>
+              <div style={{
+                fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.3)',
+              }}>
+                {stat.label}
+              </div>
             </div>
           </div>
+        ))}
+      </div>
+
+      {/* Overall Progress bar */}
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 10, padding: '16px 20px',
+        marginBottom: 24,
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginBottom: 10,
+        }}>
+          <span style={{
+            fontSize: 12, fontWeight: 600,
+            color: 'rgba(255,255,255,0.6)',
+          }}>
+            Overall Progress
+          </span>
+          <span style={{
+            fontSize: 11, fontWeight: 600,
+            color: accent,
+          }}>
+            0/{features.length} features complete
+          </span>
         </div>
-      </section>
+        <div style={{
+          height: 6,
+          background: 'rgba(255,255,255,0.08)',
+          borderRadius: 999, overflow: 'hidden',
+          marginBottom: 10,
+        }}>
+          <div style={{
+            height: '100%', width: '0%',
+            background: accent, borderRadius: 999,
+          }} />
+        </div>
+        <div style={{
+          display: 'flex', gap: 16, fontSize: 11,
+        }}>
+          {[
+            { dot: '#10b981', label: '0 Complete' },
+            { dot: accent,    label: '0 Active' },
+            { dot: 'rgba(255,255,255,0.2)',
+              label: `${features.length} Pending` },
+          ].map((item, i) => (
+            <span key={i} style={{
+              display: 'flex', alignItems: 'center',
+              gap: 5, color: 'rgba(255,255,255,0.35)',
+            }}>
+              <span style={{
+                width: 7, height: 7,
+                borderRadius: '50%',
+                background: item.dot,
+                flexShrink: 0,
+              }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 3 Quick action cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 12, marginBottom: 32,
+      }}>
+        {[
+          {
+            icon: '✦', label: 'Run Wizard',
+            desc: 'Generate or update your blueprint',
+            href: `/dashboard/projects/${projectId}/wizard`,
+            color: '#b45309',
+            bg: 'rgba(180,83,9,0.12)',
+          },
+          {
+            icon: '⊞', label: 'View Graph',
+            desc: 'Explore node relationships',
+            href: `/dashboard/projects/${projectId}/graph`,
+            color: '#1d4ed8',
+            bg: 'rgba(29,78,216,0.12)',
+          },
+          {
+            icon: '◎', label: 'Ask Agent',
+            desc: 'Converse with project context',
+            href: `/dashboard/projects/${projectId}/agent`,
+            color: '#6d28d9',
+            bg: 'rgba(109,40,217,0.12)',
+          },
+        ].map(action => (
+          <Link
+            key={action.label}
+            href={action.href}
+            style={{
+              display: 'flex', flexDirection: 'column',
+              padding: '18px 20px',
+              background: action.bg,
+              border: `1px solid ${action.color}30`,
+              borderRadius: 12,
+              textDecoration: 'none',
+              transition: 'all 0.15s',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor =
+                action.color + '60'
+              e.currentTarget.style.transform =
+                'translateY(-1px)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor =
+                action.color + '30'
+              e.currentTarget.style.transform =
+                'translateY(0)'
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 12, right: 14,
+              color: 'rgba(255,255,255,0.2)',
+              fontSize: 14,
+            }}>→</span>
+            <span style={{
+              fontSize: 20, marginBottom: 12,
+              color: action.color,
+            }}>
+              {action.icon}
+            </span>
+            <span style={{
+              fontSize: 14, fontWeight: 700,
+              color: '#fff', marginBottom: 4,
+            }}>
+              {action.label}
+            </span>
+            <span style={{
+              fontSize: 11,
+              color: 'rgba(255,255,255,0.4)',
+              lineHeight: 1.4,
+            }}>
+              {action.desc}
+            </span>
+          </Link>
+        ))}
+      </div>
+
+      {isSupported && !isConnected && (
+        <div style={{
+          margin: '0 0 24px',
+          padding: '14px 20px',
+          background: hexToRgba(accent, 0.06),
+          border: `1px solid ${hexToRgba(accent, 0.2)}`,
+          borderRadius: 12,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+        }}>
+          <div>
+            <div style={{
+              fontSize: 13, fontWeight: 600,
+              color: '#fff', marginBottom: 3,
+            }}>
+              Connect your project folder
+            </div>
+            <div style={{
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.4)',
+            }}>
+              Link a local folder to read and write
+              context files directly to disk.
+            </div>
+          </div>
+          <button
+            onClick={openFolder}
+            style={{
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center', gap: 6,
+              padding: '8px 16px',
+              background: accent, color: '#000',
+              border: 'none', borderRadius: 8,
+              fontSize: 12, fontWeight: 700,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <FolderOpen size={14} />
+            Connect Folder
+          </button>
+        </div>
+      )}
+
+      {isConnected && (
+        <div style={{
+          margin: '0 0 24px',
+          padding: '10px 16px',
+          background: 'rgba(16,185,129,0.06)',
+          border: '1px solid rgba(16,185,129,0.2)',
+          borderRadius: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 12,
+          color: '#10b981',
+        }}>
+          <span style={{ fontSize: 14 }}>✓</span>
+          Local folder connected — context files 
+          sync automatically
+        </div>
+      )}
 
       {/* PHASES SECTION */}
       <section style={{ marginBottom: 64 }}>
@@ -231,29 +499,81 @@ export default function ProjectOverviewPage() {
             </div>
           ) : (
             phases.map((phase) => (
-              <div 
-                key={phase.id}
-                style={{
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: 10,
-                  background: 'rgba(255,255,255,0.02)',
-                  padding: '20px 24px',
-                  paddingLeft: 20,
-                  position: 'relative',
-                  transition: 'border-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.borderColor = `rgba(${parseInt(accent.slice(1,3),16)},${parseInt(accent.slice(3,5),16)},${parseInt(accent.slice(5,7),16)}, 0.2)`}
-                onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
-              >
-                <div style={{ width: 2, height: '100%', background: accent, borderRadius: 999, position: 'absolute', left: 0, top: 0 }} />
+              <div key={phase.id} style={{
+                padding: '16px 20px',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 10, marginBottom: 8,
+                display: 'flex', alignItems: 'flex-start',
+                gap: 14,
+              }}>
+                {/* Phase badge */}
+                <div style={{
+                  width: 32, height: 32,
+                  borderRadius: '50%',
+                  background: hexToRgba(accent, 0.15),
+                  border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10, fontWeight: 800,
+                  color: accent, flexShrink: 0,
+                  letterSpacing: '0.02em',
+                }}>
+                  P{(phase.order_index || 0) + 1}
+                </div>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{phase.name}</div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{phase.description}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: 4,
+                  }}>
+                    <span style={{
+                      fontSize: 14, fontWeight: 600,
+                      color: '#fff',
+                    }}>
+                      {phase.name}
+                    </span>
+                    <div style={{
+                      display: 'flex', alignItems: 'center',
+                      gap: 8, flexShrink: 0,
+                    }}>
+                      <span style={{
+                        fontSize: 11,
+                        color: 'rgba(255,255,255,0.3)',
+                      }}>
+                        0/{features.filter(f => f.phase_id === phase.id).length}
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700,
+                        padding: '2px 7px', borderRadius: 999,
+                        background: 'rgba(255,255,255,0.07)',
+                        color: 'rgba(255,255,255,0.4)',
+                        letterSpacing: '0.06em',
+                      }}>
+                        {features.filter(f => f.phase_id === phase.id).length} features
+                      </span>
+                    </div>
                   </div>
-                  <div className="badge badge-neutral">
-                    {features.filter(f => f.phase_id === phase.id).length} features
+                  <div style={{
+                    fontSize: 12,
+                    color: 'rgba(255,255,255,0.35)',
+                    marginBottom: 8, lineHeight: 1.4,
+                  }}>
+                    {phase.description}
+                  </div>
+                  {/* Phase progress bar */}
+                  <div style={{
+                    height: 2,
+                    background: 'rgba(255,255,255,0.07)',
+                    borderRadius: 999,
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%', width: '0%',
+                      background: accent, borderRadius: 999,
+                    }} />
                   </div>
                 </div>
               </div>
@@ -262,88 +582,7 @@ export default function ProjectOverviewPage() {
         </div>
       </section>
 
-      {/* FEATURES SECTION */}
-      <section style={{ marginBottom: 64 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '0.02em', margin: 0 }}>Features</h2>
-          <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>
-            {features.length}
-          </div>
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: 16 }}>
-          {features.map((feature) => (
-            <div 
-              key={feature.id}
-              style={{
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 10,
-                padding: '16px 20px',
-                background: 'rgba(255,255,255,0.02)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.7)' }}>{feature.name}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
-                  {feature.phases?.name || 'Unassigned'}
-                </div>
-              </div>
-              <div className={`badge ${feature.status === 'completed' ? 'badge-success' : 'badge-neutral'}`}>
-                {feature.status || 'pending'}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CONTEXT ACTIONS ROW */}
-      <div style={{ display: 'flex', gap: 12, marginTop: 32 }}>
-        <Link 
-          href={`/dashboard/projects/${projectId}/context`}
-          style={{
-            border: `1px solid rgba(255,255,255,0.1)`,
-            color: 'rgba(255,255,255,0.6)',
-            borderRadius: 999,
-            padding: '10px 24px',
-            fontSize: 12,
-            fontWeight: 600,
-            textTransform: 'none',
-            textDecoration: 'none',
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={(e) => { 
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'
-            e.currentTarget.style.color = '#fff'
-          }}
-          onMouseLeave={(e) => { 
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-            e.currentTarget.style.color = 'rgba(255,255,255,0.6)'
-          }}
-        >
-          View context
-        </Link>
-        <Link 
-          href={`/dashboard/projects/${projectId}/agent`}
-          style={{
-            border: `1px solid ${accent}`,
-            color: accent,
-            borderRadius: 999,
-            padding: '10px 24px',
-            fontSize: 12,
-            fontWeight: 700,
-            textTransform: 'none',
-            textDecoration: 'none',
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = `rgba(${parseInt(accent.slice(1,3),16)},${parseInt(accent.slice(3,5),16)},${parseInt(accent.slice(5,7),16)}, 0.05)` }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-        >
-          Open agent
-        </Link>
-      </div>
 
       {showExport && project && (
         <ExportBriefModal

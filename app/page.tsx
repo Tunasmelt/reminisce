@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Star
 } from 'lucide-react'
-import { useTheme, THEME_COLORS } from '@/hooks/useTheme'
+import { useTheme } from '@/hooks/useTheme'
 import { Inter } from 'next/font/google'
 import LandingNav from '@/components/landing-nav'
 
@@ -38,6 +38,7 @@ export default function Home() {
 
   // Canvas Particle System
   useEffect(() => {
+    const canvasAccent = accent || '#f59e0b'
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -46,9 +47,6 @@ export default function Home() {
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-
-    const currentTheme = document.documentElement.getAttribute('data-theme') || 'solar-flare'
-    const canvasAccent = THEME_COLORS[currentTheme] ||'#f59e0b'
 
     const resize = () => {
       canvas.width = window.innerWidth
@@ -142,10 +140,10 @@ export default function Home() {
   ]
 
   const statsList = [
-    { value: '10×', label: 'FASTER RECALL' },
-    { value: '99.2%', label: 'REDUCTION' },
-    { value: '<50ms', label: 'LATENCY' },
-    { value: '∞', label: 'CAPACITY' }
+    { value: '10×',    label: 'FASTER RECALL' },
+    { value: '99.2%',  label: 'HALLUCINATION REDUCTION' },
+    { value: '<50ms',  label: 'CONTEXT INJECTION' },
+    { value: '∞',      label: 'MEMORY CAPACITY' },
   ]
 
   return (
@@ -316,6 +314,100 @@ export default function Home() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* How it works Section */}
+      <section style={{
+        padding: '100px 24px',
+        maxWidth: 1000, margin: '0 auto',
+        position: 'relative', zIndex: 10,
+      }}>
+        <div style={{
+          textAlign: 'center', marginBottom: 60,
+        }}>
+          <div style={{
+            fontSize: 9, fontWeight: 700,
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
+            color: accent, marginBottom: 16,
+          }}>
+            HOW IT WORKS
+          </div>
+          <h2 style={{
+            fontSize: 'clamp(28px, 4vw, 48px)',
+            fontWeight: 900, color: '#fff',
+            letterSpacing: '-0.02em', margin: 0,
+            lineHeight: 1.1,
+          }}>
+            Zero setup. Maximum precision.
+          </h2>
+        </div>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 16,
+        }}>
+          {[
+            {
+              num: '01',
+              title: 'Define your project',
+              desc: 'Run the wizard to generate your context document from a short conversation about your architecture and goals.',
+            },
+            {
+              num: '02',
+              title: 'Connect your models',
+              desc: 'Link any major AI provider. Reminisce auto-routes each task to the most capable and cost-efficient model.',
+            },
+            {
+              num: '03',
+              title: 'Build with memory',
+              desc: 'Every AI call automatically carries your full project context — no prompt engineering, no hallucinations.',
+            },
+          ].map(step => (
+            <div key={step.num} style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: 16, padding: '28px 24px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor =
+                hexToRgba(accent, 0.25)
+              e.currentTarget.style.background =
+                hexToRgba(accent, 0.04)
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor =
+                'rgba(255,255,255,0.07)'
+              e.currentTarget.style.background =
+                'rgba(255,255,255,0.02)'
+            }}
+            >
+              <div style={{
+                fontSize: 11, fontWeight: 700,
+                color: hexToRgba(accent, 0.7),
+                letterSpacing: '0.08em',
+                marginBottom: 14,
+              }}>
+                {step.num}
+              </div>
+              <h3 style={{
+                fontSize: 18, fontWeight: 700,
+                color: '#fff', marginBottom: 10,
+                letterSpacing: '-0.01em',
+              }}>
+                {step.title}
+              </h3>
+              <p style={{
+                fontSize: 14,
+                color: 'rgba(255,255,255,0.4)',
+                lineHeight: 1.65, margin: 0,
+              }}>
+                {step.desc}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* Features Grid */}

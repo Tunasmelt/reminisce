@@ -11,6 +11,7 @@ import {
   generateMarkdown, generateJSON, 
   downloadFile
 } from '@/lib/exportBrief'
+import { useFileSystem } from '@/hooks/useFileSystem'
 
 interface Version {
   id: string
@@ -31,6 +32,11 @@ export default function ContextPage() {
   const params = useParams()
   const { accent } = useTheme()
   const projectId = params.id as string
+
+  const { 
+    isConnected, readFile: readLocalFile,
+    writeFile: writeLocalFile 
+  } = useFileSystem()
 
   const [project, setProject] = useState<{name: string} | null>(null)
   const [history, setHistory] = useState<Version[]>([])
@@ -84,7 +90,22 @@ export default function ContextPage() {
       
       if (error) throw error
       
-      toast.success('Context state synchronized')
+      // Also write to local disk if connected
+      if (isConnected) {
+        try {
+          await writeLocalFile(
+            'reminisce/context/architecture.md',
+            editableContent
+          )
+          toast.success('Saved to Supabase + local disk')
+        } catch {
+          toast.success('Saved to Supabase')
+          // Local write non-fatal
+        }
+      } else {
+        toast.success('Context state synchronized')
+      }
+
       setIsEditing(false)
       setActiveContent(editableContent)
       fetchProj()
@@ -160,6 +181,68 @@ export default function ContextPage() {
                 background: '#f59e0b',
                 display: 'inline-block',
               }} title="Unsaved changes" />
+            )}
+
+            {isConnected && (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <button
+                  onClick={async () => {
+                    const contextFiles = [
+                      'reminisce/context/architecture.md',
+                      'reminisce/context/tech-stack.md',
+                      'reminisce/context/api-design.md',
+                      'reminisce/context/coding-guidelines.md',
+                      'reminisce/context/ai-governance.md',
+                      'reminisce/context/product-scope.md',
+                    ]
+                    
+                    let loaded = false
+                    for (const filePath of contextFiles) {
+                      try {
+                        const localContent = await readLocalFile(filePath)
+                        if (localContent && localContent.trim()) {
+                          setActiveContent(localContent)
+                          setEditableContent(localContent)
+                          toast.success(`Loaded from ${filePath}`)
+                          loaded = true
+                          break
+                        }
+                      } catch {
+                        // Try next file
+                        continue
+                      }
+                    }
+                    
+                    if (!loaded) {
+                      toast.error(
+                        'No context files found locally. ' +
+                        'Run the Wizard to generate them first.'
+                      )
+                    }
+                  }}
+                  style={{
+                    padding: '5px 12px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    background: 'transparent',
+                    color: 'rgba(255,255,255,0.4)',
+                    fontSize: 10, fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ↑ Fetch local
+                </button>
+                <div style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.2)',
+                  marginTop: 4,
+                  fontFamily: 'monospace',
+                }}>
+                  Reads from: /reminisce/context/
+                </div>
+              </div>
             )}
           </div>
   

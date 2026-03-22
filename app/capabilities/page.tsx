@@ -184,7 +184,8 @@ export default function CapabilitiesPage() {
           fontWeight: 900, 
           letterSpacing: '-0.03em', 
           lineHeight: 1.1,
-          margin: 0
+          margin: 0,
+          textTransform: 'uppercase'
         }}>
           Everything your AI<br />needs to remember.
         </h1>
@@ -249,43 +250,55 @@ export default function CapabilitiesPage() {
 
         {/* CTA Banner */}
         <div style={{
-          marginTop: isMobile ? 80 : 120,
-          background: hexToRgba(accent, 0.06),
-          border: `1px solid ${hexToRgba(accent, 0.15)}`,
-          borderRadius: 16,
-          padding: isMobile ? '32px 24px' : 48,
-          textAlign: 'center'
+          padding: '60px 24px',
+          maxWidth: 800, margin: '100px auto 0',
+          position: 'relative', zIndex: 10,
         }}>
-          <h2 style={{ fontSize: isMobile ? 24 : 28, fontWeight: 800, margin: 0, color: '#fff' }}>
-            Ready to build with precision?
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 8, marginBottom: 32 }}>
-            Your first project is free.
-          </p>
-          <Link 
-            href="/dashboard" 
-            style={{
-              background: accent,
-              color: '#000',
-              borderRadius: 999,
-              padding: '12px 32px',
-              fontSize: 14,
-              fontWeight: 800,
-              textDecoration: 'none',
-              display: 'inline-block',
-              transition: 'all 0.2s cubic-bezier(0.19, 1, 0.22, 1)'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.opacity = '0.88'
-              e.currentTarget.style.transform = 'scale(1.02)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.opacity = '1'
-              e.currentTarget.style.transform = 'scale(1)'
-            }}
-          >
-            Launch Workspace →
-          </Link>
+          <div style={{
+            border: `1px solid ${hexToRgba(accent, 0.3)}`,
+            borderRadius: 20, padding: '48px 40px',
+            textAlign: 'center',
+            background: hexToRgba(accent, 0.04),
+          }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+              color: accent, marginBottom: 12,
+            }}>
+              GET STARTED FREE
+            </div>
+            <h2 style={{
+              fontSize: 'clamp(24px, 4vw, 40px)',
+              fontWeight: 900, color: '#fff',
+              letterSpacing: '-0.01em',
+              marginBottom: 12, textTransform: 'uppercase',
+            }}>
+              Ready to build with precision?
+            </h2>
+            <p style={{
+              fontSize: 15,
+              color: 'rgba(255,255,255,0.45)',
+              marginBottom: 28,
+            }}>
+              Your first project is free. No credit card required.
+            </p>
+            <Link
+              href="/dashboard"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center', gap: 8,
+                padding: '13px 32px',
+                background: accent, color: '#000',
+                borderRadius: 999, textDecoration: 'none',
+                fontSize: 13, fontWeight: 800,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
+            >
+              Launch Workspace →
+            </Link>
+          </div>
         </div>
       </section>
 

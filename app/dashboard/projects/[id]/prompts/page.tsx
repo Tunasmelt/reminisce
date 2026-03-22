@@ -44,6 +44,13 @@ export default function PromptsPage() {
   const [activeType, setActiveType] = useState('ALL')
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
 
+  const [showCreate, setShowCreate] = useState(false)
+  const [newRawPrompt, setNewRawPrompt] = useState('')
+  const [newFeatureId, setNewFeatureId] = useState('')
+  const [newCategory, setNewCategory] = useState('FEATURE_BUILD')
+  const [newStructuring, setNewStructuring] = useState(false)
+  const [features, setFeatures] = useState<Array<{ id: string, name: string }>>([])
+
   const toggleSection = (phase: string) => {
     setCollapsedSections(prev => ({
       ...prev,
@@ -52,12 +59,27 @@ export default function PromptsPage() {
   }
 
   useEffect(() => {
-    const fetchProj = async () => {
-      const { data } = await supabase.from('projects').select('name').eq('id', projectId).single()
-      if (data) setProject(data)
+    const fetchProjAndFeatures = async () => {
+      const [{ data: projData }, { data: featData }] = await Promise.all([
+        supabase.from('projects').select('name').eq('id', projectId).single(),
+        supabase.from('features')
+          .select('id, name')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true })
+      ])
+      if (projData) setProject(projData)
+      if (featData) setFeatures(featData)
     }
-    fetchProj()
+    fetchProjAndFeatures()
   }, [projectId])
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowCreate(false)
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [])
 
   const loadPrompts = useCallback(async () => {
     try {
@@ -128,17 +150,19 @@ export default function PromptsPage() {
             }}>
               Prompts
             </h2>
-            <button style={{ 
-              background: 'transparent', 
-              border: `1px solid ${accent}`, 
-              color: accent, 
-              borderRadius: 8, 
-              padding: '6px 12px', 
-              fontSize: 11, 
-              fontWeight: 600, 
-              textTransform: 'none',
-              cursor: 'pointer' 
-            }}>
+            <button 
+              onClick={() => setShowCreate(true)}
+              style={{ 
+                background: 'transparent', 
+                border: `1px solid ${accent}`, 
+                color: accent, 
+                borderRadius: 8, 
+                padding: '6px 12px', 
+                fontSize: 11, 
+                fontWeight: 600, 
+                textTransform: 'none',
+                cursor: 'pointer' 
+              }}>
               + New
             </button>
           </div>
@@ -381,9 +405,15 @@ export default function PromptsPage() {
           <>
             <div style={{ padding: '32px 48px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ fontSize: 20, fontWeight: 800, color: '#fff', margin: 0, textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
-                  {selectedPrompt.features?.name || 'GLOBAL_PROTOCOL'}
-                </h3>
+                <h1 style={{
+                  fontSize: 24, fontWeight: 800,
+                  color: '#fff', textTransform: 'uppercase',
+                  letterSpacing: '-0.01em',
+                  lineHeight: 1.2, marginBottom: 6,
+                }}>
+                  {selectedPrompt.features?.name 
+                    || 'Prompt'}
+                </h1>
                 <div style={{ fontSize: 11, color: accent, fontWeight: 500, marginTop: 4, textTransform: 'none' }}>
                   {selectedPrompt.prompt_type.charAt(0).toUpperCase() + selectedPrompt.prompt_type.slice(1).toLowerCase().replace('_', ' ')} · {new Date(selectedPrompt.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
@@ -407,32 +437,42 @@ export default function PromptsPage() {
                   Copy structured
                 </button>
                 <button 
-                  onClick={() => router.push(`/dashboard/projects/${projectId}/agent?featureId=${selectedPrompt.feature_id || ''}`)}
+                  onClick={() => {
+                    const promptText = encodeURIComponent(
+                      selectedPrompt.structured_prompt || 
+                      selectedPrompt.raw_prompt || ''
+                    )
+                    const featureParam = selectedPrompt.feature_id
+                      ? `&featureId=${selectedPrompt.feature_id}`
+                      : ''
+                    router.push(
+                      `/dashboard/projects/${projectId}/agent?prompt=${promptText}${featureParam}`
+                    )
+                  }}
                   style={{
-                    background: accent,
-                    color: '#000',
-                    border: 'none',
-                    borderRadius: 999,
-                    padding: '10px 24px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: 'none',
-                    cursor: 'pointer'
+                    background: accent, color: '#000',
+                    border: 'none', borderRadius: 999,
+                    padding: '10px 20px',
+                    fontSize: 11, fontWeight: 800,
+                    display: 'flex', alignItems: 'center',
+                    gap: 6, cursor: 'pointer',
                   }}
                 >
-                  Send to Agent
+                  Send to Agent →
                 </button>
               </div>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '48px', position: 'relative' }}>
               {/* RAW SECTION */}
-              <div style={{ marginBottom: 48 }}>
+              <div style={{ marginBottom: 40 }}>
                 <label style={{ 
-                  fontSize: 11, fontWeight: 500, 
-                  color: 'rgba(255,255,255,0.35)', 
-                  textTransform: 'none', letterSpacing: '0.03em', 
-                  display: 'block', marginBottom: 16 
+                  fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: 'rgba(255,255,255,0.3)',
+                  textTransform: 'uppercase',
+                  marginBottom: 8,
+                  display: 'block'
                 }}>
                   Raw prompt
                 </label>
@@ -452,27 +492,77 @@ export default function PromptsPage() {
 
               {/* STRUCTURED SECTION */}
               <div>
-                <label style={{ 
-                  fontSize: 11, fontWeight: 500, 
-                  color: accent, 
-                  textTransform: 'none', letterSpacing: '0.03em', 
-                  display: 'block', marginBottom: 16 
-                }}>
-                  Structured output
-                </label>
                 <div style={{
-                  background: hexToRgba(accent, 0.02),
-                  border: `1px dashed ${hexToRgba(accent, 0.2)}`,
-                  borderRadius: 12,
-                  padding: 24,
-                  fontSize: 14,
-                  color: '#fff',
-                  lineHeight: 1.7,
-                  fontFamily: 'monospace',
-                  whiteSpace: 'pre-wrap'
+                  fontSize: 10, fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: 'rgba(255,255,255,0.3)',
+                  textTransform: 'uppercase',
+                  marginBottom: 8,
                 }}>
-                  {selectedPrompt.structured_prompt}
+                  Structured Output
                 </div>
+                <div style={{
+                  background: 'rgba(0,0,0,0.6)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 10, padding: '16px 20px',
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  lineHeight: 1.75,
+                }}>
+                  <div style={{
+                    color: 'rgba(255,255,255,0.25)',
+                    marginBottom: 8,
+                  }}>
+                    {'// REMINISCE STRUCTURED PROMPT'}
+                  </div>
+                  <div style={{ color: accent, whiteSpace: 'pre-wrap' }}>
+                    {selectedPrompt.structured_prompt}
+                  </div>
+                </div>
+              </div>
+
+              {/* METADATA ROW */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: 12, marginTop: 24,
+              }}>
+                {[
+                  { label: 'Type', 
+                    value: selectedPrompt.prompt_type
+                      ?.replace('_', ' ') },
+                  { label: 'Phase', 
+                    value: selectedPrompt.features
+                      ?.phases?.name || '—' },
+                  { label: 'Created', 
+                    value: new Date(selectedPrompt.created_at)
+                      .toLocaleDateString([], {
+                        month: 'short', day: 'numeric',
+                        year: 'numeric'
+                      }) },
+                ].map(item => (
+                  <div key={item.label} style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    borderRadius: 8, padding: '10px 14px',
+                  }}>
+                    <div style={{
+                      fontSize: 9, fontWeight: 700,
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                      color: 'rgba(255,255,255,0.25)',
+                      marginBottom: 4,
+                    }}>
+                      {item.label}
+                    </div>
+                    <div style={{
+                      fontSize: 13, fontWeight: 600,
+                      color: '#fff',
+                    }}>
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </>
@@ -485,6 +575,269 @@ export default function PromptsPage() {
           </div>
         )}
       </div>
+
+      {showCreate && (
+        <div
+          onClick={() => setShowCreate(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 560,
+              background: '#0a0a0a',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 16,
+              padding: 28,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+            }}
+          >
+            <div style={{
+              fontSize: 16, fontWeight: 700,
+              color: '#fff',
+            }}>
+              New Prompt
+            </div>
+
+            {/* Category selector */}
+            <div>
+              <div style={{
+                fontSize: 10, fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.35)',
+                marginBottom: 8,
+              }}>
+                Type
+              </div>
+              <div style={{
+                display: 'flex', gap: 6,
+                flexWrap: 'wrap',
+              }}>
+                {['FEATURE_BUILD', 'BUG_FIX', 
+                  'REFACTOR', 'API_TEST', 
+                  'ARCHITECTURE'].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setNewCategory(cat)}
+                    style={{
+                      padding: '4px 10px',
+                      border: `1px solid ${
+                        newCategory === cat
+                          ? hexToRgba(accent, 0.5)
+                          : 'rgba(255,255,255,0.1)'}`,
+                      borderRadius: 6,
+                      background: newCategory === cat
+                        ? hexToRgba(accent, 0.12)
+                        : 'transparent',
+                      color: newCategory === cat
+                        ? accent
+                        : 'rgba(255,255,255,0.4)',
+                      fontSize: 9, fontWeight: 700,
+                      letterSpacing: '0.07em',
+                      textTransform: 'uppercase',
+                      cursor: 'pointer',
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {cat.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Feature selector */}
+            {features.length > 0 && (
+              <div>
+                <div style={{
+                  fontSize: 10, fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,0.35)',
+                  marginBottom: 8,
+                }}>
+                  Link to feature (optional)
+                </div>
+                <select
+                  value={newFeatureId}
+                  onChange={e => 
+                    setNewFeatureId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#111',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    padding: '9px 12px',
+                    fontSize: 13, color: '#fff',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">No feature</option>
+                  {features.map(f => (
+                    <option key={f.id} value={f.id}
+                      style={{ background: '#111' }}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Raw prompt textarea */}
+            <div>
+              <div style={{
+                fontSize: 10, fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.35)',
+                marginBottom: 8,
+              }}>
+                Prompt
+              </div>
+              <textarea
+                value={newRawPrompt}
+                onChange={e => 
+                  setNewRawPrompt(e.target.value)}
+                placeholder="Describe what you want to build or fix..."
+                rows={6}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  fontSize: 13, color: '#fff',
+                  outline: 'none', resize: 'none',
+                  lineHeight: 1.6,
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+                onFocus={e => {
+                  e.currentTarget.style.borderColor 
+                    = accent
+                }}
+                onBlur={e => {
+                  e.currentTarget.style.borderColor 
+                    = 'rgba(255,255,255,0.1)'
+                }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  setShowCreate(false)
+                  setNewRawPrompt('')
+                  setNewFeatureId('')
+                  setNewCategory('FEATURE_BUILD')
+                }}
+                style={{
+                  flex: 1, padding: '10px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 8,
+                  background: 'transparent',
+                  color: 'rgba(255,255,255,0.4)',
+                  fontSize: 11, fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={async () => {
+                  if (!newRawPrompt.trim()) {
+                    toast.error('Enter a prompt first')
+                    return
+                  }
+                  setNewStructuring(true)
+                  try {
+                    const { data: { session } } = 
+                      await supabase.auth.getSession()
+                    const res = await fetch(
+                      '/api/prompts/structure',
+                      {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': 
+                            `Bearer ${session?.access_token}`,
+                        },
+                        body: JSON.stringify({
+                          rawPrompt: newRawPrompt,
+                          projectId,
+                          featureId: newFeatureId || undefined,
+                          promptType: newCategory,
+                          provider: 'openrouter',
+                          model: 'meta-llama/llama-3.3-70b-instruct:free',
+                        }),
+                      }
+                    )
+                    if (!res.ok) throw new Error(
+                      await res.text()
+                    )
+                    toast.success(
+                      'Prompt saved and structured'
+                    )
+                    setShowCreate(false)
+                    setNewRawPrompt('')
+                    setNewFeatureId('')
+                    setNewCategory('FEATURE_BUILD')
+                    loadPrompts()
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error 
+                        ? err.message 
+                        : 'Failed to structure prompt'
+                    )
+                  } finally {
+                    setNewStructuring(false)
+                  }
+                }}
+                disabled={newStructuring || 
+                          !newRawPrompt.trim()}
+                style={{
+                  flex: 2, padding: '10px',
+                  background: newStructuring || 
+                              !newRawPrompt.trim()
+                    ? 'rgba(255,255,255,0.1)'
+                    : accent,
+                  color: newStructuring || 
+                         !newRawPrompt.trim()
+                    ? 'rgba(255,255,255,0.3)'
+                    : '#000',
+                  border: 'none', borderRadius: 8,
+                  fontSize: 11, fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  cursor: newStructuring || 
+                          !newRawPrompt.trim()
+                    ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {newStructuring 
+                  ? 'Structuring...' 
+                  : '✦ Structure + Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -77,16 +77,42 @@ The JSON must have exactly this structure:
     })
 
     let jsonString = aiResponse.choices[0].message.content
-    // Strip markdown fences
-    jsonString = jsonString.replace(/^```[a-z]*\n?/mi, '').replace(/```$/m, '').trim()
+    
+    // Strip ALL markdown code fences (multi-pass)
+    // Remove opening fences: ```json or ``` at start
+    jsonString = jsonString.replace(/^```(?:json|javascript|js)?\s*/gim, '')
+    // Remove closing fences
+    jsonString = jsonString.replace(/```\s*$/gm, '')
+    // Find the first { and last } to extract JSON
+    const firstBrace = jsonString.indexOf('{')
+    const lastBrace = jsonString.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      jsonString = jsonString.slice(firstBrace, lastBrace + 1)
+    }
+    jsonString = jsonString.trim()
     
     let parsed
     try {
+      if (!jsonString) throw new Error('Empty AI response')
       parsed = JSON.parse(jsonString)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
-      console.error('Failed to parse JSON:', jsonString)
-      throw new Error('AI did not return valid JSON: ' + e.message)
+    } catch {
+      console.error('Initial JSON parse failed:', jsonString.slice(0, 200))
+      // Try to extract just the required fields
+      // by finding key sections
+      const archMatch = jsonString.match(/"architecture"\s*:\s*"([^"]+)"/)
+      if (archMatch) {
+         // Partial recovery — return minimal blueprint
+         parsed = {
+           architecture: archMatch[1],
+           techStack: { frontend: '', backend: '', database: '', other: '' },
+           phases: [],
+           markdownFiles: {},
+         }
+         console.warn('Using partial blueprint recovery')
+      } else {
+        throw new Error('AI did not return valid JSON. Try again.')
+      }
     }
 
     // --- FEATURE 1: GENERATE PROMPTS ---
@@ -134,7 +160,15 @@ ${promptContext}`
       })
 
       let promptsJsonString = promptsAiResponse.choices[0].message.content
-      promptsJsonString = promptsJsonString.replace(/^```[a-z]*\n?/mi, '').replace(/```$/m, '').trim()
+      // Use same robust extraction
+      promptsJsonString = promptsJsonString.replace(/^```(?:json|javascript|js)?\s*/gim, '')
+      promptsJsonString = promptsJsonString.replace(/```\s*$/gm, '')
+      const pFirstBrace = promptsJsonString.indexOf('{')
+      const pLastBrace = promptsJsonString.lastIndexOf('}')
+      if (pFirstBrace !== -1 && pLastBrace !== -1) {
+        promptsJsonString = promptsJsonString.slice(pFirstBrace, pLastBrace + 1)
+      }
+      promptsJsonString = promptsJsonString.trim()
       parsedPrompts = JSON.parse(promptsJsonString)
 
       if (!parsed.markdownFiles) parsed.markdownFiles = {}
@@ -166,8 +200,8 @@ ${promptContext}`
       
       parsed.prompts = parsedPrompts.prompts
 
-    } catch (e) {
-      console.error('Failed to generate prompts', e)
+    } catch {
+      console.error('Failed to generate prompts')
     }
     // ------------------------------------
 

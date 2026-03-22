@@ -16,8 +16,19 @@ export default function OnboardingGate({
     setMounted(true)
   }, [])
   
+  // Before mount: render children immediately
+  // but invisible. This avoids blank flash
+  // while still preventing hydration mismatch.
   if (!mounted) {
-    return <div style={{ background: '#000', minHeight: '100vh' }} />
+    return (
+      <div style={{ 
+        visibility: 'hidden',
+        minHeight: '100vh',
+        background: '#000'
+      }}>
+        {children}
+      </div>
+    )
   }
 
   if (!hasChosen) {

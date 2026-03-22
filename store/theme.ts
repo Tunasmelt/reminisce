@@ -10,13 +10,19 @@ interface ThemeStore {
 export const useThemeStore = create<ThemeStore>((set) => {
   // Sync initialization on client side
   let initialTheme = 'solar-flare'
-  let initialHasChosen = true // Default to true for SSR
-
+  let initialHasChosen = false
+  
   if (typeof window !== 'undefined') {
     initialTheme = document.documentElement.getAttribute('data-theme') || 
                    localStorage.getItem('reminisce-theme') || 
                    'solar-flare'
-    initialHasChosen = localStorage.getItem('reminisce-theme-chosen') === 'true'
+    
+    // If theme was already set (blocking script
+    // ran), consider the user as having chosen
+    const storedChoice = localStorage.getItem('reminisce-theme-chosen')
+    const storedTheme = localStorage.getItem('reminisce-theme')
+    initialHasChosen = storedChoice === 'true'
+      || (storedTheme !== null && storedTheme !== '')
   }
 
   return {

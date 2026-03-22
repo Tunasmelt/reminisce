@@ -3,7 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase'
 
 export async function callAI(params: {
   userId: string
-  provider: 'openrouter' | 'mistral' | 'gemini' | 'minimax'
+  provider: 'openrouter' | 'mistral' | 'gemini' | 'minimax' | 'anthropic'
   model: string
   messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
   stream?: boolean
@@ -11,18 +11,29 @@ export async function callAI(params: {
   max_tokens?: number
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): Promise<Response | any> {
-  const FREE_FALLBACK = 'meta-llama/llama-3.3-70b-instruct:free'
-  
   const MODEL_ALIASES: Record<string, string> = {
-    'auto:free': FREE_FALLBACK,
-    'google/gemini-2.0-flash-exp:free': FREE_FALLBACK,
-    'google/gemini-2.0-flash-lite:free': FREE_FALLBACK,
+    'auto:free': 'meta-llama/llama-3.3-70b-instruct:free',
+    'google/gemini-2.0-flash-exp:free': 
+      'google/gemini-2.0-flash-exp:free',
+    'google/gemini-2.0-flash-lite:free': 
+      'google/gemini-2.0-flash-lite:free',
+    'mistral/free': 'mistralai/mistral-7b-instruct:free',
   }
   
   const resolvedModel = MODEL_ALIASES[params.model] ?? params.model
 
-  const { userId, provider, messages, stream, temperature, max_tokens } = params
-  const model = resolvedModel
+  // If model contains '/' it's an OpenRouter 
+  // model identifier — force openrouter provider
+  let effectiveProvider = params.provider
+  const effectiveModel = resolvedModel
+  
+  if (resolvedModel.includes('/')) {
+    effectiveProvider = 'openrouter'
+  }
+
+  const { userId, messages, stream, temperature, max_tokens } = params
+  const model = effectiveModel
+  const provider = effectiveProvider
   const supabase = getServiceSupabase()
   
   let apiKey = ''
@@ -54,6 +65,9 @@ export async function callAI(params: {
       case 'minimax':
         apiKey = process.env.MINIMAX_API_KEY || ''
         break
+      case 'anthropic':
+        apiKey = process.env.ANTHROPIC_API_KEY || ''
+        break
     }
   }
   
@@ -62,6 +76,86 @@ export async function callAI(params: {
   }
 
   // 4. Route to correct provider
+  
+  if (provider === 'anthropic') {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const client = new Anthropic({ apiKey })
+    
+    // Separate system messages from conversation
+    const systemMsg = messages
+      .filter(m => m.role === 'system')
+      .map(m => m.content)
+      .join('\n')
+    
+    const conversationMsgs = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }))
+    
+    if (stream) {
+      // Use streaming
+      const streamResponse = await client.messages.stream({
+        model: model,
+        max_tokens: max_tokens || 4096,
+        system: systemMsg || undefined,
+        messages: conversationMsgs,
+      })
+      
+      // Convert to OpenAI-compatible SSE format
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of streamResponse) {
+              if (chunk.type === 'content_block_delta' 
+                  && chunk.delta.type === 'text_delta') {
+                const data = JSON.stringify({
+                  choices: [{
+                    delta: { content: chunk.delta.text }
+                  }]
+                })
+                controller.enqueue(
+                  encoder.encode(`data: ${data}\n\n`)
+                )
+              }
+            }
+            controller.enqueue(
+              encoder.encode('data: [DONE]\n\n')
+            )
+          } catch (err) {
+            controller.error(err)
+          } finally {
+            controller.close()
+          }
+        }
+      })
+      
+      return new Response(readable, {
+        headers: { 'Content-Type': 'text/event-stream' }
+      })
+    } else {
+      const response = await client.messages.create({
+        model: model,
+        max_tokens: max_tokens || 4096,
+        system: systemMsg || undefined,
+        messages: conversationMsgs,
+      })
+      
+      const textContent = response.content
+        .filter(c => c.type === 'text')
+        .map(c => c.type === 'text' ? c.text : '')
+        .join('')
+      
+      return {
+        choices: [{
+          message: { role: 'assistant', content: textContent }
+        }]
+      }
+    }
+  }
+
   let res: Response
   
   if (provider === 'openrouter') {

@@ -387,3 +387,8 @@ input:-webkit-autofill:focus {
   color: var(--accent-primary) !important;
   border-color: var(--accent-primary) !important;
 }
+
+@keyframes slideInRight {
+  from { transform: translateX(280px); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}

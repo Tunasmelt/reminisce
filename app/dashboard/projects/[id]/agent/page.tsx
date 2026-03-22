@@ -39,6 +39,9 @@ function AgentRunnerContent() {
   const { accent } = useTheme()
   const projectId = params.id as string
   const initialFeatureId = searchParams.get('featureId')
+  const initialPrompt = searchParams.get('prompt')
+    ? decodeURIComponent(searchParams.get('prompt') || '')
+    : ''
 
   const [project, setProject] = useState<{name: string} | null>(null)
 
@@ -55,34 +58,74 @@ function AgentRunnerContent() {
   const [selectedModel, setSelectedModel] = useState('mistral-small-latest')
 
   const MODELS = [
-    { provider: 'mistral', 
+    // Free models (OpenRouter)
+    { 
+      provider: 'openrouter', 
+      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      label: 'Llama 3.3 70B (Free)',
+      free: true
+    },
+    { 
+      provider: 'openrouter',
+      model: 'google/gemini-2.0-flash-exp:free',
+      label: 'Gemini 2.0 Flash (Free)',
+      free: true
+    },
+    { 
+      provider: 'openrouter',
+      model: 'mistralai/mistral-7b-instruct:free',
+      label: 'Mistral 7B (Free)',
+      free: true
+    },
+    // Paid models (direct APIs)
+    { 
+      provider: 'mistral', 
       model: 'mistral-small-latest', 
-      label: 'Mistral Small' },
-    { provider: 'mistral', 
+      label: 'Mistral Small',
+      free: false
+    },
+    { 
+      provider: 'mistral', 
       model: 'mistral-large-latest', 
-      label: 'Mistral Large' },
-    { provider: 'anthropic', 
+      label: 'Mistral Large',
+      free: false
+    },
+    { 
+      provider: 'anthropic', 
       model: 'claude-sonnet-4-20250514', 
-      label: 'Claude Sonnet' },
-    { provider: 'openai', 
-      model: 'gpt-4o', 
-      label: 'GPT-4o' },
-    { provider: 'google', 
+      label: 'Claude Sonnet',
+      free: false
+    },
+    { 
+      provider: 'gemini', 
       model: 'gemini-2.0-flash', 
-      label: 'Gemini Flash' },
+      label: 'Gemini Flash',
+      free: false
+    },
   ]
   
   const modelOptions = MODELS.map(m => ({
     value: m.model,
-    label: m.label,
-    color: undefined,
+    label: m.free 
+      ? `${m.label} ★` 
+      : m.label,
   }))
   
   const [output, setOutput] = useState('')
-  const [userInput, setUserInput] = useState('')
+  const [userInput, setUserInput] = useState(initialPrompt)
   const [isRunning, setIsRunning] = useState(false)
   const [localInputs, setLocalInputs] = useState<Record<string, string>>({})
   const [focused, setFocused] = useState(false)
+
+  const [prompts, setPrompts] = useState<Array<{
+    id: string
+    raw_prompt: string
+    structured_prompt: string
+    prompt_type: string
+    features?: { name: string }
+  }>>([])
+  const [selectedPromptId, setSelectedPromptId] = useState('')
+  const [showPromptPicker, setShowPromptPicker] = useState(false)
 
   const messageEndRef = useRef<HTMLDivElement>(null)
 
@@ -110,6 +153,17 @@ function AgentRunnerContent() {
       if (proj) setProject(proj)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (feat) setFeatures(feat as any)
+
+      // Load prompts for this project
+      const { data: promptData } = await supabase
+        .from('prompts')
+        .select('id, raw_prompt, structured_prompt, prompt_type, features(name)')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (promptData) setPrompts(promptData as any)
+
       loadHistory()
     }
     init()
@@ -118,6 +172,20 @@ function AgentRunnerContent() {
   useEffect(() => {
     if (messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [output, history])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-prompt-picker]')) {
+        setShowPromptPicker(false)
+      }
+    }
+    if (showPromptPicker) {
+      document.addEventListener('mousedown', handler)
+    }
+    return () => 
+      document.removeEventListener('mousedown', handler)
+  }, [showPromptPicker])
 
   const handleRunAgent = async () => {
     if ((!selectedFeatureId && !userInput) || isRunning) return
@@ -143,6 +211,12 @@ function AgentRunnerContent() {
           prompt: prompt
         })
       })
+
+      if (res.status === 402) {
+        const errData = await res.json()
+        toast.error(errData.error || 'Insufficient balance')
+        return
+      }
 
       if (!res.ok) throw new Error('Agent failed to start')
 
@@ -178,6 +252,17 @@ function AgentRunnerContent() {
   const handleClearHistory = async () => {
     // Keep logic for clearing history if exists, or just ui for now
     toast.info('History archival initialized')
+  }
+
+  const handleLoadPrompt = (promptId: string) => {
+    const p = prompts.find(x => x.id === promptId)
+    if (!p) return
+    // Load raw prompt into the input so user 
+    // can review/edit before sending
+    setUserInput(p.raw_prompt || p.structured_prompt)
+    setSelectedPromptId(promptId)
+    setShowPromptPicker(false)
+    toast.success('Prompt loaded — press Enter or edit before sending')
   }
 
   if (loading) return (
@@ -242,6 +327,190 @@ function AgentRunnerContent() {
           width={160}
           compact
         />
+  
+        {(() => {
+          const MODEL_COSTS: Record<string, {
+            currency: string, amount: number
+          }> = {
+            'meta-llama/llama-3.3-70b-instruct:free': 
+              { currency: 'coins', amount: 1 },
+            'google/gemini-2.0-flash-exp:free':       
+              { currency: 'coins', amount: 1 },
+            'mistralai/mistral-7b-instruct:free':     
+              { currency: 'coins', amount: 1 },
+            'mistral-small-latest':    
+              { currency: 'gems', amount: 1 },
+            'mistral-large-latest':    
+              { currency: 'gems', amount: 2 },
+            'claude-sonnet-4-20250514':
+              { currency: 'gems', amount: 3 },
+            'gemini-2.0-flash':        
+              { currency: 'gems', amount: 1 },
+          }
+          const cost = MODEL_COSTS[selectedModel]
+          if (!cost) return null
+          const icon = cost.currency === 'gems' 
+            ? '💎' : '🪙'
+          return (
+            <span style={{
+              fontSize: 10, fontWeight: 600,
+              color: cost.currency === 'gems'
+                ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+              padding: '3px 8px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 999,
+              fontFamily: 'monospace',
+            }}>
+              {icon} {cost.amount}
+            </span>
+          )
+        })()}
+
+        {prompts.length > 0 && (
+          <div 
+            style={{ position: 'relative' }}
+            data-prompt-picker="true"
+          >
+            <button
+              onClick={() => 
+                setShowPromptPicker(prev => !prev)}
+              style={{
+                display: 'flex', alignItems: 'center',
+                gap: 5, padding: '5px 12px',
+                border: `1px solid ${showPromptPicker
+                  ? hexToRgba(accent, 0.4)
+                  : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: 8,
+                background: showPromptPicker
+                  ? hexToRgba(accent, 0.08)
+                  : 'transparent',
+                color: showPromptPicker
+                  ? accent : 'rgba(255,255,255,0.45)',
+                fontSize: 11, fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+            >
+              Load prompt
+              <span style={{
+                fontSize: 9, fontWeight: 700,
+                padding: '1px 5px',
+                borderRadius: 999,
+                background: hexToRgba(accent, 0.15),
+                color: accent,
+              }}>
+                {prompts.length}
+              </span>
+            </button>
+
+            {/* Prompt picker dropdown */}
+            {showPromptPicker && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  width: 340,
+                  background: '#111',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 12,
+                  zIndex: 100,
+                  boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+                  overflow: 'hidden',
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                }}
+              >
+                <div style={{
+                  padding: '10px 14px',
+                  borderBottom: '1px solid rgba(255,255,255,0.07)',
+                  fontSize: 10, fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,0.35)',
+                }}>
+                  Select a prompt to load
+                </div>
+                {prompts.map(p => {
+                  const typeColors: Record<string,string> = {
+                    FEATURE_BUILD: '#3b82f6',
+                    BUG_FIX: '#ef4444',
+                    REFACTOR: '#f59e0b',
+                    API_TEST: '#10b981',
+                    ARCHITECTURE: '#8b5cf6',
+                  }
+                  const tc = typeColors[p.prompt_type] 
+                    || '#6b7280'
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => handleLoadPrompt(p.id)}
+                      style={{
+                        padding: '10px 14px',
+                        borderBottom: 
+                          '1px solid rgba(255,255,255,0.05)',
+                        cursor: 'pointer',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background 
+                          = 'rgba(255,255,255,0.06)'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background 
+                          = 'transparent'
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center', gap: 7,
+                        marginBottom: 4,
+                      }}>
+                        <span style={{
+                          fontSize: 8, fontWeight: 800,
+                          padding: '2px 5px',
+                          borderRadius: 3,
+                          background: `${tc}20`,
+                          color: tc,
+                          border: `1px solid ${tc}40`,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          flexShrink: 0,
+                        }}>
+                          {p.prompt_type?.replace('_',' ') || 'PROMPT'}
+                        </span>
+                        {(p.features as {name:string}|undefined)?.name && (
+                          <span style={{
+                            fontSize: 10,
+                            color: 'rgba(255,255,255,0.4)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {(p.features as {name:string}).name}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{
+                        fontSize: 11,
+                        color: 'rgba(255,255,255,0.55)',
+                        lineHeight: 1.45,
+                        overflow: 'hidden',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical' as const,
+                      }}>
+                        {p.raw_prompt?.slice(0, 100)}
+                        {(p.raw_prompt?.length || 0) > 100 ? '...' : ''}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
   
         <div style={{ flex: 1 }} />
   
@@ -446,31 +715,85 @@ function AgentRunnerContent() {
             {!loading && history.length === 0 
              && !isRunning && (
               <div style={{
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                padding: '60px 0', gap: 14,
+                flex: 1, display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px 24px',
+                gap: 16,
               }}>
                 <div style={{
-                  width: 44, height: 44, borderRadius: 10,
-                  background: hexToRgba(accent, 0.08),
-                  border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                  width: 52, height: 52,
+                  borderRadius: 14,
+                  background: hexToRgba(accent, 0.1),
+                  border: `1px solid ${hexToRgba(accent, 0.25)}`,
                   display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 20,
+                  justifyContent: 'center',
+                  fontSize: 22,
                 }}>✦</div>
                 <div style={{
-                  fontSize: 13, fontWeight: 700,
-                  color: 'rgba(255,255,255,0.4)',
+                  fontSize: 18, fontWeight: 700,
+                  color: '#fff', textAlign: 'center',
                 }}>
                   Ask anything about your project
                 </div>
                 <div style={{
-                  fontSize: 12,
-                  color: 'rgba(255,255,255,0.2)',
-                  textAlign: 'center', maxWidth: 320,
+                  fontSize: 13,
+                  color: 'rgba(255,255,255,0.4)',
+                  textAlign: 'center', maxWidth: 340,
                   lineHeight: 1.6,
                 }}>
                   Full project context is injected 
-                  automatically into every message
+                  automatically into every message — 
+                  no prompt engineering needed.
+                </div>
+                {/* Suggestion chips */}
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap',
+                  gap: 8, justifyContent: 'center',
+                  marginTop: 8, maxWidth: 480,
+                }}>
+                  {[
+                    'Summarize Phase 3 progress',
+                    'Identify architectural risks',
+                    'Generate test cases for auth flow',
+                    'Review deployment checklist',
+                  ].map(suggestion => (
+                    <button
+                      key={suggestion}
+                      onClick={() => {
+                        setUserInput(suggestion)
+                      }}
+                      style={{
+                        padding: '7px 14px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 999,
+                        background: 'rgba(255,255,255,0.04)',
+                        color: 'rgba(255,255,255,0.55)',
+                        fontSize: 12, fontWeight: 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor 
+                          = accent
+                        e.currentTarget.style.color 
+                          = accent
+                        e.currentTarget.style.background 
+                          = hexToRgba(accent, 0.08)
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor 
+                          = 'rgba(255,255,255,0.1)'
+                        e.currentTarget.style.color 
+                          = 'rgba(255,255,255,0.55)'
+                        e.currentTarget.style.background 
+                          = 'rgba(255,255,255,0.04)'
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -615,6 +938,64 @@ function AgentRunnerContent() {
             padding: '14px 20px', flexShrink: 0,
             background: 'rgba(0,0,0,0.4)',
           }}>
+            {initialPrompt && !output && history.length === 0 && (
+              <div style={{
+                margin: '0 0 12px',
+                padding: '10px 14px',
+                background: hexToRgba(accent, 0.08),
+                border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                borderRadius: 8,
+                fontSize: 12,
+                color: 'rgba(255,255,255,0.55)',
+                lineHeight: 1.5,
+              }}>
+                <span style={{ 
+                  color: accent, fontWeight: 600 
+                }}>
+                  Prompt loaded from Prompts Studio.
+                </span>
+                {' '}Review and press Enter to send, 
+                or edit before sending.
+              </div>
+            )}
+            {selectedPromptId && !isRunning && 
+             history.length === 0 && !output && (
+              <div style={{
+                margin: '0 20px 8px',
+                padding: '8px 14px',
+                background: hexToRgba(accent, 0.07),
+                border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+              }}>
+                <span style={{
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.5)',
+                }}>
+                  <span style={{ color: accent, fontWeight: 600 }}>
+                    Prompt loaded.
+                  </span>
+                  {' '}Edit or press Enter to run.
+                </span>
+                <button
+                  onClick={() => {
+                    setUserInput('')
+                    setSelectedPromptId('')
+                  }}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'rgba(255,255,255,0.2)',
+                    cursor: 'pointer', fontSize: 14,
+                    lineHeight: 1, padding: '0 4px',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <textarea
                 value={userInput}
@@ -727,6 +1108,73 @@ function AgentRunnerContent() {
                 </span>
               </div>
             ))}
+  
+            {/* Token usage */}
+            <div style={{
+              marginTop: 16,
+              paddingTop: 16,
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <div style={{
+                fontSize: 9, fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'rgba(255,255,255,0.25)',
+                marginBottom: 10,
+              }}>
+                Token Usage
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: 6,
+              }}>
+                <span style={{
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.35)',
+                }}>
+                  Context
+                </span>
+                <span style={{
+                  fontSize: 11, fontFamily: 'monospace',
+                  color: accent, fontWeight: 700,
+                }}>
+                  {history.length > 0 && history[0]?.output
+                    ? Math.floor(
+                        (history[0].output.length || 0) / 4
+                      ).toLocaleString()
+                    : '—'
+                  }
+                </span>
+              </div>
+              {/* Token bar */}
+              <div style={{
+                height: 4,
+                background: 'rgba(255,255,255,0.07)',
+                borderRadius: 999, overflow: 'hidden',
+                marginBottom: 6,
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: history[0]?.output
+                    ? `${Math.min(
+                        (Math.floor(
+                          (history[0].output.length||0)/4
+                        ) / 8000) * 100, 100
+                      )}%`
+                    : '28%',
+                  background: accent,
+                  borderRadius: 999,
+                }} />
+              </div>
+              <div style={{
+                fontSize: 10,
+                color: 'rgba(255,255,255,0.2)',
+                fontFamily: 'monospace',
+              }}>
+                28% of 8k context window
+              </div>
+            </div>
   
             {/* Selected feature */}
             {selectedFeatureId && features.find(

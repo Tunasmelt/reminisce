@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServiceSupabase, supabase as clientSupabase } from '@/lib/supabase'
 import { callAI } from '@/lib/ai-client'
+import { deductCost, refundCost, ensureWallet } from '@/lib/wallet'
 
 export async function POST(req: Request) {
   try {
@@ -11,32 +12,51 @@ export async function POST(req: Request) {
     const { data: { user }, error: authError } = await clientSupabase.auth.getUser(token)
     if (!user || authError) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { projectId, featureId, provider, model } = await req.json()
+    const { projectId, featureId, provider, model, prompt: directPrompt } = await req.json()
+
+    // Ensure wallet exists
+    await ensureWallet(user.id)
     
-    if (!projectId || !featureId || !provider || !model) {
+    // Deduct cost before run
+    const costResult = await deductCost(user.id, model)
+    if (!costResult.success) {
+      return NextResponse.json(
+        { error: costResult.message },
+        { status: 402 }
+      )
+    }
+    
+    if (!projectId || !provider || !model) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
     }
 
     const supabase = getServiceSupabase()
 
     // a. Load Feature
-    const { data: feature, error: fError } = await supabase
-      .from('features')
-      .select('*')
-      .eq('id', featureId)
-      .single()
-    if (fError) throw fError
+    let feature = null
+    if (featureId) {
+      const { data: f, error: fError } = await supabase
+        .from('features')
+        .select('*')
+        .eq('id', featureId)
+        .single()
+      if (!fError) feature = f
+    }
 
     // b. Load Structured Prompt
-    const { data: promptData } = await supabase
-      .from('prompts')
-      .select('structured_prompt')
-      .eq('feature_id', featureId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    let promptData = null
+    if (featureId) {
+      const { data: p } = await supabase
+        .from('prompts')
+        .select('structured_prompt')
+        .eq('feature_id', featureId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      promptData = p
+    }
 
-    const basePrompt = promptData?.structured_prompt || feature.description || 'Implement this feature.'
+    const basePrompt = directPrompt || promptData?.structured_prompt || feature?.description || 'Implement this feature.'
 
     // c. Load Context Files
     const contextPaths = [
@@ -171,6 +191,9 @@ ${contextText}
                error_message: error instanceof Error ? error.message : String(error)
             })
             .eq('id', run.id)
+
+          // Refund on failure
+          await refundCost(user.id, model, run?.id)
         } finally {
           controller.close()
         }

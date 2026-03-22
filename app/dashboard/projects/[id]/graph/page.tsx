@@ -25,15 +25,13 @@ import { toast } from 'sonner'
 import { 
   Maximize, 
   Play, 
-  Settings2, 
-  X,
   Target,
   Box,
   Layers,
   Network,
   Terminal,
 } from 'lucide-react'
-import CustomSelect from '@/components/CustomSelect'
+import { useTheme } from '@/hooks/useTheme'
 
 // --- Custom Node Components ---
 
@@ -177,13 +175,32 @@ export default function GraphPage() {
   const params = useParams()
   const router = useRouter()
   const projectId = params.id as string
+  const { accent } = useTheme()
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [loading, setLoading] = useState(true)
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const [project, setProject] = useState<{ name: string } | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [selectedNodeData, setSelectedNodeData] = useState<{
+    id: string
+    type: 'phase' | 'feature'
+    name: string
+    description?: string
+    status?: string
+    featureId?: string
+  } | null>(null)
+  const [panelSaving, setPanelSaving] = useState(false)
+
+  const STATUS_CONFIG: Record<string, { label: string, color: string }> = {
+    todo:        { label: 'To Do',      color: '#6b7280' },
+    in_progress: { label: 'In Progress', color: accent },
+    blocked:     { label: 'Blocked',    color: '#ef4444' },
+    done:        { label: 'Done',       color: '#10b981' },
+    review:      { label: 'In Review',  color: '#8b5cf6' },
+  }
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024)
@@ -208,7 +225,7 @@ export default function GraphPage() {
       ] = await Promise.all([
         supabase.from('projects').select('*').eq('id', projectId).single(),
         supabase.from('phases').select('*').eq('project_id', projectId).order('order_index'),
-        supabase.from('features').select('*').eq('project_id', projectId).order('priority'),
+        supabase.from('features').select('id, name, description, status, type, phase_id').eq('project_id', projectId).order('priority'),
         supabase.from('graph_nodes').select('*').eq('project_id', projectId)
       ])
 
@@ -247,7 +264,7 @@ export default function GraphPage() {
           id: phaseKey,
           type: 'phaseNode',
           position: phasePos,
-          data: { label: phase.name, description: phase.description, status: phase.status, id: phase.id, type: 'phase' }
+          data: { label: phase.name, description: phase.description, status: phase.status || 'todo', id: phase.id, type: 'phase' }
         })
 
         rfEdges.push({
@@ -270,7 +287,16 @@ export default function GraphPage() {
             id: featureKey,
             type: 'featureNode',
             position: fPos,
-            data: { label: feature.name, featureType: feature.type, status: feature.status, description: feature.description, id: feature.id, type: 'feature', projectId: projectId }
+            data: { 
+              label: feature.name, 
+              featureType: feature.type, 
+              status: feature.status || 'todo', 
+              description: feature.description, 
+              id: feature.id, 
+              featureId: feature.id,
+              type: 'feature', 
+              projectId: projectId 
+            }
           })
 
           rfEdges.push({
@@ -339,25 +365,75 @@ export default function GraphPage() {
     } catch (err) { console.error(err) }
   }, [projectId])
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    if (node.type === 'projectNode') return 
-    setSelectedNode(node)
-  }, [])
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (node.type === 'featureNode' || node.type === 'phaseNode') {
+        setSelectedNodeId(node.id)
+        setSelectedNodeData({
+          id: node.id,
+          type: node.type === 'phaseNode' ? 'phase' : 'feature',
+          name: node.data.label as string,
+          description: (node.data.description as string) || '',
+          status: (node.data.status as string) || 'todo',
+          featureId: (node.data.featureId as string) || node.id,
+        })
+      }
+    },
+    []
+  )
 
-  const handleStatusChange = async (newStatus: string) => {
-    if (!selectedNode) return
-    const id = selectedNode.data.id as string
-    const type = selectedNode.data.type as string
-
+  const handleSaveStatus = async (newStatus: string) => {
+    if (!selectedNodeData) return
+    setPanelSaving(true)
     try {
+      const type = selectedNodeData.type
       const table = type === 'phase' ? 'phases' : 'features'
-      const { error } = await supabase.from(table).update({ status: newStatus }).eq('id', id)
+      // featureId is already the actual DB id
+      const id = selectedNodeData.featureId || selectedNodeData.id.split('-').pop()
+      
+      const { error } = await supabase
+        .from(table)
+        .update({ status: newStatus })
+        .eq('id', id)
+      
       if (error) throw error
-      toast.success(`${type} updated`)
-      setNodes((nds) => nds.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, status: newStatus } } : n))
-      setSelectedNode(prev => prev ? { ...prev, data: { ...prev.data, status: newStatus } } : null)
-    } catch { toast.error('Update failed') }
+
+      // Update node data locally
+      setNodes(nds => nds.map(n => 
+        n.id === selectedNodeId
+          ? { ...n, data: { ...n.data, status: newStatus } }
+          : n
+      ))
+      setSelectedNodeData(prev => 
+        prev ? { ...prev, status: newStatus } : null
+      )
+      toast.success('Status updated')
+    } catch {
+      toast.error('Failed to update status')
+    } finally {
+      setPanelSaving(false)
+    }
   }
+
+  const progressStats = useMemo(() => {
+    const featureNodes = nodes.filter(
+      n => n.type === 'featureNode'
+    )
+    const total = featureNodes.length
+    const done = featureNodes.filter(
+      n => n.data.status === 'done' || n.data.status === 'complete'
+    ).length
+    const inProgress = featureNodes.filter(
+      n => n.data.status === 'in_progress' || n.data.status === 'active'
+    ).length
+    const blocked = featureNodes.filter(
+      n => n.data.status === 'blocked'
+    ).length
+    return { 
+      total, done, inProgress, blocked,
+      pct: total > 0 ? Math.round((done / total) * 100) : 0 
+    }
+  }, [nodes])
 
   if (loading) return (
     <div className="flex-1 flex flex-col gap-6 p-6">
@@ -394,7 +470,7 @@ export default function GraphPage() {
             </div>
             <div className="grid gap-2">
               {features.filter((f: Node) => edges.some((e: Edge) => e.source === phase.id && e.target === f.id)).map((feature: Node) => (
-                 <div key={feature.id} className="bg-black border border-reminisce-border-subtle rounded-rem-md p-4 flex items-center justify-between active-button-press" onClick={() => setSelectedNode(feature)}>
+                 <div key={feature.id} className="bg-black border border-reminisce-border-subtle rounded-rem-md p-4 flex items-center justify-between active-button-press" onClick={(e) => handleNodeClick(e, feature)}>
                     <div className="flex items-center gap-3"><Box className="w-4 h-4 text-reminisce-accent-purple" /><div><p className="text-xs font-black text-white uppercase italic">{feature.data.label as string}</p><p className="text-[8px] text-reminisce-text-muted font-black uppercase mt-1">{feature.data.featureType as string}</p></div></div>
                     <Terminal className="w-4 h-4 text-reminisce-text-muted" />
                  </div>
@@ -410,63 +486,310 @@ export default function GraphPage() {
     <div className={`flex-1 ${isMobile ? 'flex flex-col' : 'h-[calc(100vh-220px)]'} bg-black rounded-rem-lg border border-reminisce-border-subtle overflow-hidden flex relative shadow-2xl animate-page-fade`}>
       <title>{`Reminisce — Graph — ${project?.name}`}</title>
       {isMobile ? <MobileListView /> : (
-        <ReactFlow 
-          nodes={nodes} 
-          edges={edges} 
-          onNodesChange={onNodesChange} 
-          onEdgesChange={onEdgesChange} 
-          onNodeDragStop={onNodeDragStop} 
-          onNodeClick={onNodeClick} 
-          nodeTypes={nodeTypes} 
-          fitView 
-          fitViewOptions={{ 
-            padding: 0.15,
-            includeHiddenNodes: false 
-          }}
-          minZoom={0.1}
-          maxZoom={2}
-          snapToGrid 
-          snapGrid={[20, 20]} 
-          colorMode="dark"
-        >
-          <Background variant={BackgroundVariant.Dots} gap={40} size={1} color="#1f1f1f" />
-          <Controls showFitView={false} className="bg-reminisce-bg-surface border-reminisce-border-default text-white fill-white rounded-rem-md overflow-hidden" />
-          <MiniMap className="bg-black/80 border border-reminisce-border-subtle rounded-rem-md overflow-hidden !m-4" nodeColor={(n) => n.type === 'projectNode' ? 'var(--accent-primary)' : n.type === 'phaseNode' ? '#3b82f6' : '#8b5cf6'} maskColor="rgba(0,0,0,0.8)" />
-          <div className="absolute top-6 right-6 z-10"><Button size="sm" variant="outline" className="bg-reminisce-bg-surface/80 backdrop-blur-xl border-reminisce-border-default hover:bg-black text-[11px] font-medium text-white rounded-rem-pill px-6 text-transform-none h-10 shadow-2xl active-button-press"><Maximize className="w-3.5 h-3.5 mr-2" /> Recenter</Button></div>
-        </ReactFlow>
-      )}
-
-      {selectedNode && (
-        <div className={`absolute ${isMobile ? 'inset-0' : 'top-6 right-6 bottom-6 w-96'} bg-reminisce-bg-surface/95 border border-reminisce-border-subtle backdrop-blur-2xl rounded-rem-lg shadow-2xl z-50 flex flex-col animate-in ${isMobile ? 'slide-in-from-bottom-10' : 'slide-in-from-right-10'} duration-500`}>
-          <div className="p-6 md:p-8 border-b border-reminisce-border-subtle flex items-center justify-between bg-black/40">
-            <div className="flex items-center gap-3"><Settings2 className="w-4 h-4 text-[var(--accent-primary)]" /><h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)' }}>Node Inspector</h3></div>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-reminisce-text-muted hover:text-white" onClick={() => setSelectedNode(null)}><X className="w-4 h-4" /></Button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-8 pb-24 scrollbar-thin scrollbar-thumb-reminisce-border-subtle">
-            <div className={`text-[9px] font-black uppercase tracking-[0.4em] mb-4 flex items-center gap-2.5 ${selectedNode.type === 'phaseNode' ? 'text-reminisce-accent-blue' : 'text-reminisce-accent-purple'}`}>{selectedNode.type === 'phaseNode' ? <Layers className="w-4 h-4" /> : <Box className="w-4 h-4" />}{selectedNode.type === 'phaseNode' ? 'Architectural Phase' : 'Project Feature'}</div>
-            <h2 className="text-3xl font-black text-white mb-4 italic uppercase tracking-tighter">{selectedNode.data.label as string}</h2>
-            <div className="space-y-10 mt-10">
-              <div><label className="text-[9px] font-black text-reminisce-text-muted uppercase tracking-widest block mb-4">SPECIFICATION</label><p className="text-sm text-reminisce-text-secondary leading-relaxed bg-black/40 p-6 rounded-rem-md border border-reminisce-border-subtle font-medium italic">{selectedNode.data.description as string || 'No documentation found.'}</p></div>
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', display: 'block', marginBottom: 8 }}>
-                  Status
-                </label>
-                <CustomSelect
-                  value={selectedNode.data.status as string}
-                  onChange={handleStatusChange}
-                  options={[
-                    { value: 'planned', label: 'PLANNED' },
-                    { value: 'active', label: 'ACTIVE' },
-                    { value: 'complete', label: 'COMPLETE' },
-                  ]}
-                  width="100%"
-                />
-              </div>
-              {selectedNode.type === 'featureNode' && (
-                <div className="bg-[var(--accent-subtle)] border border-[var(--accent-primary)]/20 p-8 rounded-rem-lg mt-10"><div className="flex items-center gap-3 mb-4"><Terminal className="w-5 h-5 text-[var(--accent-primary)]" /><span className="text-[10px] font-black text-[var(--accent-primary)] uppercase">Agent Control</span></div><Button className="w-full h-14 bg-[var(--accent-primary)] hover:brightness-110 text-black font-black uppercase tracking-widest text-[11px] rounded-rem-pill active-button-press" onClick={() => router.push(`/dashboard/projects/${projectId}/agent?featureId=${selectedNode.data.id}`)}><Play className="w-4 h-4 mr-3" /> RUN MODULE AGENT</Button></div>
-              )}
+        <div style={{ position: 'relative', flex: 1 }}>
+          {/* Progress bar overlay */}
+          <div style={{
+            position: 'absolute',
+            top: 16, left: 16,
+            zIndex: 10,
+            background: 'rgba(0,0,0,0.8)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12,
+            padding: '12px 16px',
+            minWidth: 220,
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}>
+              <span style={{
+                fontSize: 11, fontWeight: 600,
+                color: 'rgba(255,255,255,0.5)',
+              }}>
+                Progress
+              </span>
+              <span style={{
+                fontSize: 13, fontWeight: 700,
+                color: accent,
+              }}>
+                {progressStats.pct}%
+              </span>
+            </div>
+            {/* Progress bar track */}
+            <div style={{
+              height: 4,
+              background: 'rgba(255,255,255,0.08)',
+              borderRadius: 999,
+              overflow: 'hidden',
+              marginBottom: 10,
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${progressStats.pct}%`,
+                background: accent,
+                borderRadius: 999,
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
+            {/* Stats row */}
+            <div style={{
+              display: 'flex', gap: 12,
+            }}>
+              {[
+                { label: 'Done', val: progressStats.done, 
+                  color: '#10b981' },
+                { label: 'Active', 
+                  val: progressStats.inProgress, 
+                  color: accent },
+                { label: 'Blocked', 
+                  val: progressStats.blocked, 
+                  color: '#ef4444' },
+                { label: 'Total', 
+                  val: progressStats.total, 
+                  color: 'rgba(255,255,255,0.3)' },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 700,
+                    color: s.color,
+                  }}>
+                    {s.val}
+                  </div>
+                  <div style={{
+                    fontSize: 9,
+                    color: 'rgba(255,255,255,0.25)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    marginTop: 1,
+                  }}>
+                    {s.label}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+
+          <ReactFlow 
+            nodes={nodes} 
+            edges={edges} 
+            onNodesChange={onNodesChange} 
+            onEdgesChange={onEdgesChange} 
+            onNodeDragStop={onNodeDragStop} 
+            onNodeClick={handleNodeClick} 
+            nodeTypes={nodeTypes} 
+            fitView 
+            fitViewOptions={{ 
+              padding: 0.15,
+              includeHiddenNodes: false 
+            }}
+            minZoom={0.1}
+            maxZoom={2}
+            snapToGrid 
+            snapGrid={[20, 20]} 
+            colorMode="dark"
+          >
+            <Background variant={BackgroundVariant.Dots} gap={40} size={1} color="#1f1f1f" />
+            <Controls showFitView={false} className="bg-reminisce-bg-surface border-reminisce-border-default text-white fill-white rounded-rem-md overflow-hidden" />
+            <MiniMap className="bg-black/80 border border-reminisce-border-subtle rounded-rem-md overflow-hidden !m-4" nodeColor={(n) => n.type === 'projectNode' ? 'var(--accent-primary)' : n.type === 'phaseNode' ? '#3b82f6' : '#8b5cf6'} maskColor="rgba(0,0,0,0.8)" />
+            <div className="absolute top-6 right-6 z-10"><Button size="sm" variant="outline" className="bg-reminisce-bg-surface/80 backdrop-blur-xl border-reminisce-border-default hover:bg-black text-[11px] font-medium text-white rounded-rem-pill px-6 text-transform-none h-10 shadow-2xl active-button-press"><Maximize className="w-3.5 h-3.5 mr-2" /> Recenter</Button></div>
+          </ReactFlow>
+
+          {/* Detail panel (right side overlay) */}
+          {selectedNodeData && (
+            <div style={{
+              position: 'absolute',
+              top: 0, right: 0, bottom: 0,
+              width: 280,
+              background: 'rgba(0,0,0,0.92)',
+              backdropFilter: 'blur(20px)',
+              borderLeft: '1px solid rgba(255,255,255,0.08)',
+              zIndex: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              animation: 'slideInRight 0.2s ease',
+            }}>
+              {/* Panel header */}
+              <div style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{
+                    fontSize: 9, fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255,255,255,0.3)',
+                    marginBottom: 4,
+                  }}>
+                    {selectedNodeData.type === 'phase'
+                      ? 'Phase' : 'Feature'}
+                  </div>
+                  <div style={{
+                    fontSize: 14, fontWeight: 600,
+                    color: '#fff',
+                    lineHeight: 1.3,
+                  }}>
+                    {selectedNodeData.name}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedNodeId(null)
+                    setSelectedNodeData(null)
+                  }}
+                  style={{
+                    width: 28, height: 28,
+                    border: 'none',
+                    background: 'rgba(255,255,255,0.06)',
+                    borderRadius: 6,
+                    color: 'rgba(255,255,255,0.4)',
+                    cursor: 'pointer', fontSize: 16,
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Panel body */}
+              <div style={{
+                flex: 1, overflowY: 'auto',
+                padding: '16px 20px',
+              }}>
+                
+                {/* Status selector */}
+                {selectedNodeData.type === 'feature' && (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{
+                      fontSize: 10, fontWeight: 600,
+                      letterSpacing: '0.06em',
+                      color: 'rgba(255,255,255,0.35)',
+                      textTransform: 'uppercase',
+                      marginBottom: 8,
+                    }}>
+                      Status
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column', gap: 4,
+                    }}>
+                      {Object.entries(STATUS_CONFIG)
+                        .map(([key, cfg]) => {
+                        const isSelected = 
+                          selectedNodeData.status === key
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => 
+                              handleSaveStatus(key)}
+                            disabled={panelSaving}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              padding: '8px 12px',
+                              borderRadius: 8,
+                              border: `1px solid ${
+                                isSelected 
+                                  ? cfg.color + '50'
+                                  : 'rgba(255,255,255,0.07)'
+                              }`,
+                              background: isSelected
+                                ? cfg.color + '15'
+                                : 'transparent',
+                              color: isSelected
+                                ? cfg.color : '#fff',
+                              fontSize: 12,
+                              fontWeight: isSelected ? 600 : 400,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              transition: 'all 0.12s',
+                            }}
+                          >
+                            <div style={{
+                              width: 8, height: 8,
+                              borderRadius: '50%',
+                              background: cfg.color,
+                              flexShrink: 0,
+                            }} />
+                            {cfg.label}
+                            {isSelected && (
+                              <span style={{
+                                marginLeft: 'auto',
+                                fontSize: 12,
+                              }}>
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Description */}
+                {selectedNodeData.description && (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{
+                      fontSize: 10, fontWeight: 600,
+                      letterSpacing: '0.06em',
+                      color: 'rgba(255,255,255,0.35)',
+                      textTransform: 'uppercase',
+                      marginBottom: 8,
+                    }}>
+                      Description
+                    </div>
+                    <div style={{
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,0.55)',
+                      lineHeight: 1.65,
+                    }}>
+                      {selectedNodeData.description}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Panel footer: Run Agent button */}
+              {selectedNodeData.type === 'feature' && (
+                <div style={{
+                  padding: '14px 20px',
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <button
+                    onClick={() => router.push(
+                      `/dashboard/projects/${projectId}/agent?featureId=${selectedNodeData.featureId}`
+                    )}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '10px',
+                      background: accent,
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: 8,
+                      fontSize: 12, fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ▶ Run Agent
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
