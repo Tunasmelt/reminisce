@@ -1,315 +1,1265 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import {
+  useState, useEffect, useCallback,
+  useRef, Suspense,
+} from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { 
-  ArrowUp,
-  Trash2
+import {
+  ArrowUp, Plus, Edit2, Check, X,
+  ChevronRight, ChevronDown, Trash2,
+  Zap, AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { getTimeUntilUTCReset } from '@/lib/wallet'
 import ReactMarkdown from 'react-markdown'
 import { useTheme } from '@/hooks/useTheme'
 import CustomSelect from '@/components/CustomSelect'
 
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-
-interface AgentRun {
-  id: string;
-  status: string;
-  started_at: string;
-  model_used: string;
-  output?: string;
-  input?: string;
-  features?: {
-    name: string;
-  };
+interface PamThread {
+  id: string
+  title: string | null
+  model_used: string | null
+  message_count: number
+  last_message_at: string
+  created_at: string
 }
 
+interface PamMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  model_used: string | null
+  tokens_used: number | null
+  action_type: string | null
+  action_payload: Record<string, unknown> | null
+  action_confirmed: boolean | null
+  created_at: string
+}
+
+interface PendingAction {
+  messageId: string
+  actionType: string
+  actionPayload: Record<string, unknown>
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function hexToRgba(hex: string, a: number) {
+  if (!hex || hex.length < 7) return `rgba(245,158,11,${a})`
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   return `rgba(${r},${g},${b},${a})`
 }
 
-function AgentRunnerContent() {
-  const params = useParams()
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  const today = new Date()
+  if (d.toDateString() === today.toDateString()) return 'Today'
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function actionLabel(type: string, payload: Record<string, unknown>): string {
+  switch (type) {
+    case 'UPDATE_FEATURE_STATUS':
+      return `Mark "${payload.featureName}" as ${payload.newStatus}`
+    case 'UPDATE_PHASE_STATUS':
+      return `Mark phase "${payload.phaseName}" as ${payload.newStatus}`
+    case 'CREATE_PROMPT':
+      return `Save prompt for "${payload.featureName ?? 'feature'}"`
+    default:
+      return 'Perform action'
+  }
+}
+
+// ─── Model list ──────────────────────────────────────────────────────────────
+
+const MODELS = [
+  { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B ★', free: true },
+  { provider: 'groq',       model: 'llama-3.1-8b-instant',                    label: 'Llama 3.1 8B (Groq) ★', free: true },
+  { provider: 'cerebras',   model: 'llama3.1-8b',                              label: 'Llama 3.1 8B (Cerebras) ⚡★', free: true },
+  { provider: 'cerebras',   model: 'llama-3.3-70b',                            label: 'Llama 3.3 70B (Cerebras) ⚡★', free: true },
+  { provider: 'openrouter', model: 'mistralai/mistral-7b-instruct:free',        label: 'Mistral 7B ★', free: true },
+  { provider: 'openrouter', model: 'nvidia/llama-3.1-nemotron-super-49b-v1:free', label: 'Nemotron 49B ★', free: true },
+  { provider: 'mistral',    model: 'mistral-small-latest',                     label: 'Mistral Small', free: false },
+  { provider: 'mistral',    model: 'mistral-large-latest',                     label: 'Mistral Large', free: false },
+  { provider: 'anthropic',  model: 'claude-sonnet-4-20250514',                 label: 'Claude Sonnet', free: false },
+  { provider: 'gemini',     model: 'gemini-2.5-flash',                         label: 'Gemini 2.5 Flash', free: false },
+]
+
+const SLASH_COMMANDS = [
+  {
+    cmd:     '/status',
+    label:   'Project Status',
+    desc:    'Full briefing — phases, features, completion %',
+    template:'Give me a full project status briefing.',
+    icon:    '📊',
+  },
+  {
+    cmd:     '/briefing',
+    label:   'Daily Briefing',
+    desc:    'What\'s done, in progress, and next up',
+    template:'Give me a daily standup briefing for this project.',
+    icon:    '☀️',
+  },
+  {
+    cmd:     '/done',
+    label:   'Mark as Done',
+    desc:    'Mark a feature or phase as done',
+    template:'/done ',
+    icon:    '✅',
+    needsMention: true,
+  },
+  {
+    cmd:     '/block',
+    label:   'Mark as Blocked',
+    desc:    'Mark a feature as blocked',
+    template:'/block ',
+    icon:    '🚫',
+    needsMention: true,
+  },
+  {
+    cmd:     '/prompt',
+    label:   'Generate Prompt',
+    desc:    'Generate a build prompt for a feature',
+    template:'/prompt ',
+    icon:    '⚡',
+    needsMention: true,
+  },
+  {
+    cmd:     '/add',
+    label:   'Add Feature',
+    desc:    'Add a new feature to a phase',
+    template:'/add  to ',
+    icon:    '➕',
+  },
+  {
+    cmd:     '/risks',
+    label:   'Identify Risks',
+    desc:    'Find blockers and architectural risks',
+    template:'Identify any risks, blockers, or concerns in this project.',
+    icon:    '⚠️',
+  },
+  {
+    cmd:     '/next',
+    label:   'What\'s Next',
+    desc:    'Suggest the next feature to build',
+    template:'What should I work on next and why?',
+    icon:    '→',
+  },
+]
+
+// ─── Context drawer ───────────────────────────────────────────────────────────
+
+function ContextDrawer({
+  accent, contextFiles, phases, features,
+  drawerOpen, setDrawerOpen, remindersData, onMarkDone,
+}: {
+  accent: string
+  contextFiles: Array<{ file_path: string }>
+  phases: Array<{ name: string; status: string }>
+  features: Array<{ name: string; status: string; type: string }>
+  drawerOpen: boolean
+  setDrawerOpen: (v: boolean) => void
+  remindersData: Array<{ id: string; text: string; due_date: string | null; done: boolean; created_at: string }>
+  onMarkDone: (id: string) => void
+}) {
+  const doneFeatures = features.filter(f => f.status === 'done' || f.status === 'complete').length
+  const progress = features.length > 0 ? Math.round((doneFeatures / features.length) * 100) : 0
+
+  return (
+    <div style={{
+      borderTop: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(255,255,255,0.02)',
+      flexShrink: 0,
+      transition: 'max-height 0.3s ease',
+      maxHeight: drawerOpen ? 320 : 40,
+      overflow: 'hidden',
+    }}>
+      {/* Drawer toggle */}
+      <button
+        onClick={() => setDrawerOpen(!drawerOpen)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center',
+          gap: 8, padding: '10px 20px',
+          background: 'transparent', border: 'none',
+          cursor: 'pointer', color: 'rgba(255,255,255,0.4)',
+          fontSize: 11, fontWeight: 700, letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+        }}
+      >
+        {drawerOpen ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+        Project Context
+        <span style={{
+          marginLeft: 'auto', fontSize: 10,
+          background: hexToRgba(accent, 0.12),
+          color: accent, borderRadius: 999, padding: '2px 8px',
+          border: `1px solid ${hexToRgba(accent, 0.25)}`,
+        }}>
+          {contextFiles.length} files · {features.length} features{remindersData.length > 0 ? ` · ${remindersData.length} reminder${remindersData.length !== 1 ? 's' : ''}` : ''}
+        </span>
+      </button>
+
+      {/* Drawer content */}
+      <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Progress */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Overall progress</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: accent }}>{progress}%</span>
+          </div>
+          <div style={{ height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 999 }}>
+            <div style={{
+              height: '100%', width: `${progress}%`,
+              background: accent, borderRadius: 999,
+              transition: 'width 0.5s ease',
+            }}/>
+          </div>
+        </div>
+
+        {/* Phases */}
+        {phases.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {phases.map((p, i) => (
+              <span key={i} style={{
+                fontSize: 10, padding: '3px 9px', borderRadius: 999,
+                background: p.status === 'done' || p.status === 'complete'
+                  ? hexToRgba(accent, 0.15) : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${p.status === 'done' || p.status === 'complete'
+                  ? hexToRgba(accent, 0.3) : 'rgba(255,255,255,0.1)'}`,
+                color: p.status === 'done' || p.status === 'complete'
+                  ? accent : 'rgba(255,255,255,0.45)',
+                fontWeight: 600,
+              }}>
+                {p.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Context files */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {contextFiles.map((f, i) => (
+            <span key={i} style={{
+              fontSize: 9, fontFamily: 'monospace', padding: '2px 7px',
+              borderRadius: 4, background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#10b981',
+            }}>
+              ✓ {f.file_path.split('/').pop()}
+            </span>
+          ))}
+        </div>
+
+        {/* Reminders */}
+        {remindersData.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: '0.1em',
+              textTransform: 'uppercase' as const,
+              color: 'rgba(255,255,255,0.3)', marginBottom: 8,
+            }}>
+              Reminders ({remindersData.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {remindersData.map(r => (
+                <div key={r.id} style={{
+                  display: 'flex', alignItems: 'flex-start',
+                  gap: 8, padding: '8px 10px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 8,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 12, color: 'rgba(255,255,255,0.7)',
+                      lineHeight: 1.4,
+                    }}>{r.text}</div>
+                    {r.due_date && (
+                      <div style={{
+                        fontSize: 10, color: 'rgba(255,255,255,0.3)',
+                        marginTop: 3,
+                      }}>
+                        Due {new Date(r.due_date).toLocaleDateString([], {
+                          month: 'short', day: 'numeric',
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onMarkDone(r.id)}
+                    style={{
+                      background: 'rgba(16,185,129,0.1)',
+                      border: '1px solid rgba(16,185,129,0.2)',
+                      borderRadius: 6, padding: '3px 8px',
+                      fontSize: 10, fontWeight: 700,
+                      color: '#10b981', cursor: 'pointer',
+                      flexShrink: 0,
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Suggestion chips ─────────────────────────────────────────────────────────
+
+function SuggestionChips({
+  accent, phases, features, onSelect,
+}: {
+  accent: string
+  phases: Array<{ name: string }>
+  features: Array<{ name: string; status: string }>
+  onSelect: (text: string) => void
+}) {
+  const inProgress = features.find(f => f.status === 'in_progress')
+  const firstPhase = phases[0]
+
+  const chips = [
+    'Give me a full project briefing',
+    firstPhase ? `What's left in ${firstPhase.name}?` : 'What phases are planned?',
+    inProgress  ? `What does "${inProgress.name}" involve?` : 'What features are in progress?',
+    'Identify any risks or blockers',
+    'Generate a prompt for the next feature to build',
+    'Summarise what PAM has helped with recently',
+  ].filter(Boolean)
+
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap',
+      gap: 8, justifyContent: 'center', maxWidth: 520,
+    }}>
+      {chips.map((chip, i) => (
+        <button key={i} onClick={() => onSelect(chip as string)} style={{
+          padding: '7px 16px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.04)',
+          color: 'rgba(255,255,255,0.55)',
+          fontSize: 12, fontWeight: 500,
+          cursor: 'pointer', transition: 'all 0.15s',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.borderColor = accent
+          e.currentTarget.style.color = accent
+          e.currentTarget.style.background = hexToRgba(accent, 0.08)
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+          e.currentTarget.style.color = 'rgba(255,255,255,0.55)'
+          e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+        }}
+        >
+          {chip}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Thread list item ─────────────────────────────────────────────────────────
+
+function ThreadItem({
+  thread, isActive, accent, onSelect, onRename, onArchive,
+}: {
+  thread: PamThread
+  isActive: boolean
+  accent: string
+  onSelect: () => void
+  onRename: (title: string) => void
+  onArchive: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(thread.title ?? '')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const commitRename = () => {
+    if (draft.trim()) onRename(draft.trim())
+    setEditing(false)
+  }
+
+  return (
+    <div
+      onClick={() => !editing && onSelect()}
+      style={{
+        padding: '10px 12px', borderRadius: 10,
+        marginBottom: 4, cursor: 'pointer',
+        background: isActive ? hexToRgba(accent, 0.1) : 'transparent',
+        border: `1px solid ${isActive ? hexToRgba(accent, 0.25) : 'transparent'}`,
+        transition: 'all 0.15s',
+      }}
+      onMouseEnter={e => {
+        if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+      }}
+      onMouseLeave={e => {
+        if (!isActive) e.currentTarget.style.background = 'transparent'
+      }}
+    >
+      {editing ? (
+        <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') setEditing(false)
+            }}
+            style={{
+              flex: 1, background: 'rgba(255,255,255,0.08)',
+              border: `1px solid ${accent}`,
+              borderRadius: 6, padding: '3px 8px',
+              fontSize: 12, color: '#fff', outline: 'none',
+            }}
+          />
+          <button onClick={commitRename} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#10b981' }}>
+            <Check size={13}/>
+          </button>
+          <button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)' }}>
+            <X size={13}/>
+          </button>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 }}>
+            <div style={{
+              fontSize: 12, fontWeight: isActive ? 600 : 400,
+              color: isActive ? '#fff' : 'rgba(255,255,255,0.65)',
+              lineHeight: 1.4, overflow: 'hidden',
+              display: '-webkit-box', WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical' as const,
+              flex: 1,
+            }}>
+              {thread.title ?? 'New conversation'}
+            </div>
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: 0 }}
+              className="thread-actions"
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setEditing(true)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', padding: 2 }}
+                title="Rename"
+              ><Edit2 size={11}/></button>
+              <button
+                onClick={onArchive}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', padding: 2 }}
+                title="Archive"
+              ><Trash2 size={11}/></button>
+            </div>
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
+            {formatDate(thread.last_message_at)} · {thread.message_count} msg{thread.message_count !== 1 ? 's' : ''}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function CommandPalette({
+  query, commands, selectedIndex, accent, onSelect,
+}: {
+  query: string
+  commands: typeof SLASH_COMMANDS
+  selectedIndex: number
+  accent: string
+  onSelect: (cmd: typeof SLASH_COMMANDS[0]) => void
+}) {
+  const filtered = commands.filter(c =>
+    c.cmd.includes(query.toLowerCase()) ||
+    c.label.toLowerCase().includes(query.toLowerCase())
+  )
+  if (filtered.length === 0) return null
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: '100%', left: 0, right: 0,
+      marginBottom: 8,
+      background: 'rgba(10,10,24,0.97)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      borderRadius: 14,
+      overflow: 'hidden',
+      boxShadow: '0 -16px 48px rgba(0,0,0,0.5)',
+      zIndex: 50,
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '8px 14px',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.1em',
+          textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)',
+        }}>
+          Commands
+        </span>
+        <span style={{
+          fontSize: 10, color: 'rgba(255,255,255,0.2)',
+        }}>
+          ↑↓ navigate · Enter select · Esc close
+        </span>
+      </div>
+
+      {/* Command list */}
+      {filtered.map((c, i) => (
+        <div
+          key={c.cmd}
+          onClick={() => onSelect(c)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 14px',
+            background: i === selectedIndex % filtered.length
+              ? hexToRgba(accent, 0.1) : 'transparent',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            cursor: 'pointer',
+            transition: 'background 0.1s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = hexToRgba(accent, 0.08)
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = i === selectedIndex % filtered.length
+              ? hexToRgba(accent, 0.1) : 'transparent'
+          }}
+        >
+          <span style={{ fontSize: 16, width: 20, textAlign: 'center', flexShrink: 0 }}>
+            {c.icon}
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                fontSize: 12, fontWeight: 700,
+                fontFamily: 'ui-monospace,monospace',
+                color: i === selectedIndex % filtered.length
+                  ? accent : '#fff',
+              }}>
+                {c.cmd}
+              </span>
+              <span style={{
+                fontSize: 11, fontWeight: 600,
+                color: 'rgba(255,255,255,0.5)',
+              }}>
+                {c.label}
+              </span>
+            </div>
+            <div style={{
+              fontSize: 11, color: 'rgba(255,255,255,0.3)',
+              marginTop: 1,
+            }}>
+              {c.desc}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MentionPicker({
+  query,
+  phases,
+  features,
+  selectedIndex,
+  accent,
+  onSelect,
+}: {
+  query: string
+  phases:   Array<{ id: string; name: string; status: string }>
+  features: Array<{ id: string; name: string; status: string; type: string }>
+  selectedIndex: number
+  accent: string
+  onSelect: (entity: { type: 'feature'|'phase'; id: string; name: string }) => void
+}) {
+  const q = query.toLowerCase()
+
+  const matchedFeatures = features
+    .filter(f => f.name.toLowerCase().includes(q))
+    .slice(0, 5)
+    .map(f => ({ type: 'feature' as const, id: f.id, name: f.name, status: f.status, sub: f.type }))
+
+  const matchedPhases = phases
+    .filter(p => p.name.toLowerCase().includes(q))
+    .slice(0, 3)
+    .map(p => ({ type: 'phase' as const, id: p.id, name: p.name, status: p.status, sub: 'phase' }))
+
+  const all = [...matchedFeatures, ...matchedPhases]
+  if (all.length === 0) return null
+
+  const statusColor = (s: string) => {
+    if (s === 'done' || s === 'complete') return '#10b981'
+    if (s === 'in_progress') return '#f59e0b'
+    if (s === 'blocked') return '#ef4444'
+    return 'rgba(255,255,255,0.3)'
+  }
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: '100%', left: 0, right: 0,
+      marginBottom: 8,
+      background: 'rgba(10,10,24,0.97)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
+      border: '1px solid rgba(255,255,255,0.12)',
+      borderRadius: 14, overflow: 'hidden',
+      boxShadow: '0 -16px 48px rgba(0,0,0,0.5)',
+      zIndex: 50,
+    }}>
+      <div style={{
+        padding: '8px 14px',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.1em',
+          textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)',
+        }}>
+          Mention
+        </span>
+      </div>
+      {all.map((entity, i) => (
+        <div
+          key={`${entity.type}-${entity.id}`}
+          onClick={() => onSelect(entity)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '9px 14px',
+            background: i === selectedIndex % all.length
+              ? hexToRgba(accent, 0.1) : 'transparent',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            cursor: 'pointer', transition: 'background 0.1s',
+          }}
+          onMouseEnter={e =>
+            e.currentTarget.style.background = hexToRgba(accent, 0.08)
+          }
+          onMouseLeave={e => {
+            e.currentTarget.style.background = i === selectedIndex % all.length
+              ? hexToRgba(accent, 0.1) : 'transparent'
+          }}
+        >
+          <span style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: '0.06em',
+            textTransform: 'uppercase', padding: '2px 6px',
+            borderRadius: 4,
+            background: entity.type === 'feature'
+              ? hexToRgba(accent, 0.12)
+              : 'rgba(255,255,255,0.06)',
+            color: entity.type === 'feature'
+              ? accent : 'rgba(255,255,255,0.4)',
+            flexShrink: 0,
+          }}>
+            {entity.type}
+          </span>
+          <span style={{
+            fontSize: 13, fontWeight: 600,
+            color: '#fff', flex: 1, minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {entity.name}
+          </span>
+          <span style={{
+            fontSize: 9, fontWeight: 700,
+            color: statusColor(entity.status),
+            flexShrink: 0,
+          }}>
+            {entity.status}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+function PAMContent() {
+  const params       = useParams()
   const searchParams = useSearchParams()
-  const { accent } = useTheme()
-  const projectId = params.id as string
-  const initialFeatureId = searchParams.get('featureId')
-  const initialPrompt = searchParams.get('prompt')
-    ? decodeURIComponent(searchParams.get('prompt') || '')
-    : ''
+  const { accent }   = useTheme()
+  const projectId    = params.id as string
 
-  const [project, setProject] = useState<{name: string} | null>(null)
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [project,      setProject]      = useState<{ name: string; description: string | null } | null>(null)
+  const [threads,      setThreads]      = useState<PamThread[]>([])
+  const [activeThread, setActiveThread] = useState<string | null>(null)
+  const [messages,     setMessages]     = useState<PamMessage[]>([])
+  const [phases,       setPhases]       = useState<Array<{ id: string; name: string; status: string }>>([])
+  const [features,     setFeatures]     = useState<Array<{ id: string; name: string; status: string; type: string }>>([])
+  const [contextFiles, setContextFiles] = useState<Array<{ file_path: string }>>([])
 
-  const [history, setHistory] = useState<AgentRun[]>([])
-  const [loading, setLoading] = useState(true)
+  const [input,        setInput]        = useState(searchParams.get('prompt') ? decodeURIComponent(searchParams.get('prompt')!) : '')
+  const [isStreaming,  setIsStreaming]   = useState(false)
+  const [streamText,   setStreamText]   = useState('')
+  const [focused,      setFocused]      = useState(false)
+  const [loading,      setLoading]      = useState(true)
+  const [drawerOpen,   setDrawerOpen]   = useState(false)
+  const [pendingAction,setPendingAction]= useState<PendingAction | null>(null)
+  const [memoryCount, setMemoryCount] = useState(0)
 
-  const [features, setFeatures] = useState<Array<{
+  const [briefingLoading, setBriefingLoading] = useState(false)
+  const [riskBanner,      setRiskBanner]      = useState<{
+    blockedCount: number
+    staleCount:   number
+    items:        string[]
+  } | null>(null)
+  const [riskDismissed,   setRiskDismissed]   = useState(false)
+
+  const [reminders, setReminders] = useState<Array<{
     id: string
-    name: string
-    phases?: { name: string }
+    text: string
+    due_date: string | null
+    done: boolean
+    created_at: string
   }>>([])
-  const [selectedFeatureId, setSelectedFeatureId] = useState(initialFeatureId || '')
-  const [selectedProvider, setSelectedProvider] = useState('mistral')
-  const [selectedModel, setSelectedModel] = useState('mistral-small-latest')
 
-  const MODELS = [
-    // ── FREE TIER (OpenRouter, coins) ──────
-    {
-      provider: 'openrouter',
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
-      label: 'Llama 3.3 70B',
-      free: true,
-      note: '',
-    },
-    {
-      provider: 'openrouter',
-      model: 'google/gemini-2.0-flash-exp:free',
-      label: 'Gemini 2.0 Flash',
-      free: true,
-      note: '',
-    },
-    {
-      provider: 'openrouter',
-      model: 'mistralai/mistral-7b-instruct:free',
-      label: 'Mistral 7B',
-      free: true,
-      note: '',
-    },
-    {
-      provider: 'openrouter',
-      model: 'mistralai/mistral-small-3.1-24b-instruct:free',
-      label: 'Mistral Small 3.1',
-      free: true,
-      note: '',
-    },
-    {
-      provider: 'openrouter',
-      model: 'nvidia/llama-3.1-nemotron-super-49b-v1:free',
-      label: 'NVIDIA Nemotron Super',
-      free: true,
-      note: '',
-    },
-    {
-      provider: 'openrouter',
-      model: 'nvidia/llama-nemotron-nano-8b-instruct:free',
-      label: 'NVIDIA Nemotron Nano',
-      free: true,
-      note: '',
-    },
-    // ── PRO TIER (direct APIs, gems) ───────
-    {
-      provider: 'mistral',
-      model: 'mistral-small-latest',
-      label: 'Mistral Small',
-      free: false,
-      note: '',
-    },
-    {
-      provider: 'mistral',
-      model: 'mistral-large-latest',
-      label: 'Mistral Large',
-      free: false,
-      note: '',
-    },
-    {
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
-      label: 'Claude Sonnet',
-      free: false,
-      note: '',
-    },
-    {
-      provider: 'gemini',
-      model: 'gemini-2.0-flash',
-      label: 'Gemini Flash (Direct)',
-      free: false,
-      note: '',
-    },
-  ]
-  
-  const modelOptions = MODELS.map(m => ({
-    value: m.model,
-    label: m.free 
-      ? `${m.label} ★` 
-      : m.label,
-  }))
-  
-  const [output, setOutput] = useState('')
-  const [userInput, setUserInput] = useState(initialPrompt)
-  const [isRunning, setIsRunning] = useState(false)
-  const [localInputs, setLocalInputs] = useState<Record<string, string>>({})
-  const [focused, setFocused] = useState(false)
+  const [showCommands,   setShowCommands]   = useState(false)
+  const [showMentions,   setShowMentions]   = useState(false)
+  const [cmdQuery,       setCmdQuery]       = useState('')
+  const [mentionQuery,   setMentionQuery]   = useState('')
+  const [cmdIndex,       setCmdIndex]       = useState(0)
+  const [mentionIndex,   setMentionIndex]   = useState(0)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const [prompts, setPrompts] = useState<Array<{
-    id: string
-    raw_prompt: string
-    structured_prompt: string
-    prompt_type: string
-    features?: { name: string }
-  }>>([])
-  const [selectedPromptId, setSelectedPromptId] = useState('')
-  const [showPromptPicker, setShowPromptPicker] = useState(false)
+  const [selectedModel,    setSelectedModel]    = useState('llama-3.1-8b-instant')
+  const [selectedProvider, setSelectedProvider] = useState('groq')
 
-  const messageEndRef = useRef<HTMLDivElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const loadHistory = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(`/api/agent/history?projectId=${projectId}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token}` }
-      })
-      const data = await res.json()
-      if (data.runs) setHistory(data.runs)
-    } catch (err) { console.error(err) }
-    finally { setLoading(false) }
+  // ── Init ───────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    // Restore model preference from localStorage
+    if (typeof window !== 'undefined') {
+      const storedModel    = localStorage.getItem('wizard_model')
+      const storedProvider = localStorage.getItem('wizard_provider')
+      if (storedModel && storedProvider) {
+        const match = MODELS.find((m) => m.model === storedModel)
+        if (match) { setSelectedModel(match.model); setSelectedProvider(match.provider) }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const loadProjectData = useCallback(async () => {
+    const [
+      { data: proj },
+      { data: ph },
+      { data: feat },
+      { data: ctx },
+      { count: memCount },
+    ] = await Promise.all([
+      supabase.from('projects').select('name, description').eq('id', projectId).single(),
+      supabase.from('phases').select('id, name, status').eq('project_id', projectId).order('order_index'),
+      supabase.from('features').select('id, name, status, type').eq('project_id', projectId).order('priority'),
+      supabase.from('contexts').select('file_path').eq('project_id', projectId),
+      supabase
+        .from('pam_thread_summaries')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', projectId),
+    ])
+    if (proj)  setProject(proj)
+    if (ph)    setPhases(ph)
+    if (feat)  setFeatures(feat)
+    if (ctx)   setContextFiles(ctx)
+    if (typeof memCount === 'number') setMemoryCount(memCount)
+
+    // Risk detection — blocked features + features stale > 14 days
+    if (feat && feat.length > 0) {
+      const blocked = feat.filter(f => f.status === 'blocked')
+      // Features that are in_progress but project data lacks updated_at,
+      // so we surface blocked + features with todo/planned if many
+      const stale = feat.filter(
+        f => f.status === 'todo' || f.status === 'planned'
+      ).slice(0, 3)
+
+      if (blocked.length > 0) {
+        const items = [
+          ...blocked.slice(0, 3).map(f => `"${f.name}" is blocked`),
+          ...(blocked.length > 3 ? [`+${blocked.length - 3} more blocked`] : []),
+        ]
+        setRiskBanner({
+          blockedCount: blocked.length,
+          staleCount:   stale.length,
+          items,
+        })
+      }
+    }
+
+    // Load reminders
+    const { data: { session: remSession } } =
+      await supabase.auth.getSession()
+    const remRes = await fetch(
+      `/api/pam/reminders?projectId=${projectId}`,
+      { headers: { Authorization: `Bearer ${remSession?.access_token}` } }
+    )
+    const remData = await remRes.json()
+    if (remData.reminders) setReminders(remData.reminders)
+  }, [projectId])
+
+  const loadThreads = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`/api/pam/threads?projectId=${projectId}`, {
+      headers: { Authorization: `Bearer ${session?.access_token}` },
+    })
+    const data = await res.json()
+    if (data.threads) setThreads(data.threads)
   }, [projectId])
 
   useEffect(() => {
     const init = async () => {
-      const [{ data: proj }, { data: feat }] = await Promise.all([
-        supabase.from('projects').select('name').eq('id', projectId).single(),
-        supabase.from('features')
-          .select('id, name, phases(name)')
-          .eq('project_id', projectId)
-          .order('created_at', { ascending: true })
-      ])
-      if (proj) setProject(proj)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (feat) setFeatures(feat as any)
-
-      // Load prompts for this project
-      const { data: promptData } = await supabase
-        .from('prompts')
-        .select('id, raw_prompt, structured_prompt, prompt_type, features(name)')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-        .limit(50)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (promptData) setPrompts(promptData as any)
-
-      loadHistory()
+      await Promise.all([loadProjectData(), loadThreads()])
+      setLoading(false)
     }
     init()
-  }, [projectId, loadHistory])
+  }, [loadProjectData, loadThreads])
 
+  // ── Load thread messages ───────────────────────────────────────────────────
+  const loadMessages = useCallback(async (threadId: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`/api/pam/thread/${threadId}`, {
+      headers: { Authorization: `Bearer ${session?.access_token}` },
+    })
+    const data = await res.json()
+    if (data.messages) {
+      setMessages(data.messages)
+      // Check for any pending actions
+      const pending = data.messages.findLast(
+        (m: PamMessage) => m.role === 'assistant' && m.action_type && m.action_confirmed === null
+      )
+      if (pending) {
+        setPendingAction({
+          messageId:     pending.id,
+          actionType:    pending.action_type!,
+          actionPayload: pending.action_payload!,
+        })
+      }
+    }
+  }, [])
+
+  const selectThread = useCallback(async (threadId: string) => {
+    setActiveThread(threadId)
+    setStreamText('')
+    setPendingAction(null)
+    await loadMessages(threadId)
+  }, [loadMessages])
+
+  // ── Auto-scroll ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (messageEndRef.current) messageEndRef.current.scrollIntoView({ behavior: 'smooth' })
-  }, [output, history])
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, streamText])
 
+  // Close command palette and mention picker on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (!target.closest('[data-prompt-picker]')) {
-        setShowPromptPicker(false)
+      if (!target.closest('[data-pam-input]')) {
+        setShowCommands(false)
+        setShowMentions(false)
       }
     }
-    if (showPromptPicker) {
-      document.addEventListener('mousedown', handler)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // ── Create new thread ─────────────────────────────────────────────────────
+  const createThread = useCallback(async (): Promise<string> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/pam/threads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        projectId,
+        model:    selectedModel,
+        provider: selectedProvider,
+      }),
+    })
+    const data = await res.json()
+    await loadThreads()
+    return data.thread.id
+  }, [projectId, selectedModel, selectedProvider, loadThreads])
+
+  const handleInputChange = useCallback((val: string) => {
+    setInput(val)
+
+    // Slash command detection
+    if (val.startsWith('/')) {
+      setShowMentions(false)
+      setCmdQuery(val.slice(1))
+      setCmdIndex(0)
+      setShowCommands(true)
+      return
     }
-    return () => 
-      document.removeEventListener('mousedown', handler)
-  }, [showPromptPicker])
 
-  const handleRunAgent = async () => {
-    if ((!selectedFeatureId && !userInput) || isRunning) return
-
-    setIsRunning(true)
-    const prompt = userInput
-    setUserInput('')
-    setOutput('')
-    
-    // Store input locally for display as fallback
-    const tempId = Date.now().toString()
-    setLocalInputs(prev => ({ ...prev, [tempId]: prompt }))
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch('/api/agent/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ 
-          projectId, 
-          featureId: selectedFeatureId, 
-          provider: selectedProvider, 
-          model: selectedModel,
-          prompt: prompt
-        })
-      })
-
-      if (res.status === 402) {
-        const errData = await res.json()
-        toast.error(errData.error || 'Insufficient balance')
+    // @mention detection — find last @ in the string
+    const lastAt = val.lastIndexOf('@')
+    if (lastAt !== -1) {
+      const afterAt = val.slice(lastAt + 1)
+      // Only show picker if @ is at end or has partial query (no space yet)
+      if (!afterAt.includes(' ') || afterAt.length === 0) {
+        setShowCommands(false)
+        setMentionQuery(afterAt)
+        setMentionIndex(0)
+        setShowMentions(true)
         return
       }
+    }
 
-      if (!res.ok) throw new Error('Agent failed to start')
+    // No trigger active
+    setShowCommands(false)
+    setShowMentions(false)
+  }, [])
 
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('Stream failed')
+  const handleSelectCommand = useCallback((cmd: typeof SLASH_COMMANDS[0]) => {
+    setShowCommands(false)
+    // Commands with templates that end in space need the cursor
+    // positioned for the user to type the rest
+    setInput(cmd.template)
+    // If the command is a direct action (no mention needed), send immediately
+    if (!cmd.needsMention && !cmd.template.endsWith(' ')) {
+      // Will be sent by user pressing Enter
+    }
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [])
 
+  const handleSelectMention = useCallback((entity: {
+    type: 'feature' | 'phase'
+    id: string
+    name: string
+  }) => {
+    setShowMentions(false)
+    // Replace the @[partial] at end of input with @feature:Name or @phase:Name
+    const lastAt = input.lastIndexOf('@')
+    const before = input.slice(0, lastAt)
+    const mention = `@${entity.type}:${entity.name}`
+    setInput(before + mention + ' ')
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [input])
+
+  const sendBriefing = useCallback(async () => {
+    if (briefingLoading || isStreaming) return
+    setBriefingLoading(true)
+
+    // Create a fresh thread for the briefing
+    const threadId = await createThread()
+    setActiveThread(threadId)
+    setMessages([])
+    setPendingAction(null)
+    setStreamText('')
+
+    // Brief pause to let UI settle
+    await new Promise(r => setTimeout(r, 150))
+
+    // Pre-fill the input and send immediately
+    const briefingMessage = 'Give me a full project status briefing — phases, feature completion percentages, what\'s in progress, what\'s blocked, and what I should focus on next.'
+
+    setBriefingLoading(false)
+    setIsStreaming(true)
+    setStreamText('')
+
+    // Optimistic user message
+    const optimisticMsg: PamMessage = {
+      id:               `opt-briefing-${Date.now()}`,
+      role:             'user',
+      content:          briefingMessage,
+      model_used:       null,
+      tokens_used:      null,
+      action_type:      null,
+      action_payload:   null,
+      action_confirmed: null,
+      created_at:       new Date().toISOString(),
+    }
+    setMessages([optimisticMsg])
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/pam/message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          threadId,
+          projectId,
+          provider: selectedProvider,
+          model:    selectedModel,
+          content:  briefingMessage,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Briefing failed')
+
+      const reader  = res.body!.getReader()
       const decoder = new TextDecoder()
-      let fullText = ''
+      let   full    = ''
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-
         const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6)
-            if (dataStr === '[DONE]') continue
-            try {
-              const parsed = JSON.parse(dataStr)
-              const content = parsed.choices?.[0]?.delta?.content || ''
-              fullText += content; setOutput(fullText)
-            } catch { fullText += dataStr; setOutput(fullText) }
-          }
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.__pam_action) continue
+            full += parsed.choices?.[0]?.delta?.content ?? ''
+            setStreamText(full.replace(/\[PAM_ACTION\][\s\S]*?\[\/PAM_ACTION\]/g, '').trim())
+          } catch { /* partial */ }
         }
       }
-      loadHistory()
+
+      await loadMessages(threadId)
+      setStreamText('')
+      await loadThreads()
     } catch (err) {
-      const msg = err instanceof Error 
-        ? err.message : String(err)
-      
-      if (msg.includes('Rate limit') 
-          || msg.includes('429')) {
-        toast.error(msg, { 
-          duration: 8000,
-          description: 'Free models have a 20 req/min limit per IP address.'
-        })
-      } else {
-        toast.error(msg, { duration: 6000 })
-      }
+      toast.error(err instanceof Error ? err.message : 'Briefing failed')
+      setMessages([])
+    } finally {
+      setIsStreaming(false)
     }
-    finally { setIsRunning(false) }
-  }
+  }, [briefingLoading, isStreaming, createThread, projectId,
+      selectedProvider, selectedModel, loadMessages, loadThreads,
+      setPendingAction])
 
-  const handleClearHistory = async () => {
-    // Keep logic for clearing history if exists, or just ui for now
-    toast.info('History archival initialized')
-  }
+  // ── Send message ──────────────────────────────────────────────────────────
+  const sendMessage = useCallback(async () => {
+    const text = input.trim()
+    if (!text || isStreaming) return
 
-  const handleLoadPrompt = (promptId: string) => {
-    const p = prompts.find(x => x.id === promptId)
-    if (!p) return
-    // Load raw prompt into the input so user 
-    // can review/edit before sending
-    setUserInput(p.raw_prompt || p.structured_prompt)
-    setSelectedPromptId(promptId)
-    setShowPromptPicker(false)
-    toast.success('Prompt loaded — press Enter or edit before sending')
-  }
+    setInput('')
+    setIsStreaming(true)
+    setStreamText('')
+
+    // Ensure we have an active thread
+    let threadId = activeThread
+    if (!threadId) {
+      threadId = await createThread()
+      setActiveThread(threadId)
+    }
+
+    // Optimistic user message
+    const optimisticMsg: PamMessage = {
+      id:               `opt-${Date.now()}`,
+      role:             'user',
+      content:          text,
+      model_used:       null,
+      tokens_used:      null,
+      action_type:      null,
+      action_payload:   null,
+      action_confirmed: null,
+      created_at:       new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, optimisticMsg])
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/pam/message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          threadId,
+          projectId,
+          provider: selectedProvider,
+          model:    selectedModel,
+          content:  text,
+        }),
+      })
+
+      if (res.status === 402) {
+        toast.error(`Out of coins. Resets ${getTimeUntilUTCReset()}.`, { duration: 8000 })
+        setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
+        return
+      }
+      if (!res.ok) throw new Error('PAM request failed')
+
+      const reader  = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let   full    = ''
+      let   pamAction: PendingAction | null = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(data)
+            // PAM action meta event
+            if (parsed.__pam_action) {
+              pamAction = {
+                messageId:     '',   // filled after reload
+                actionType:    parsed.actionType,
+                actionPayload: parsed.actionPayload,
+              }
+              continue
+            }
+            full += parsed.choices?.[0]?.delta?.content ?? ''
+            setStreamText(full.replace(/\[PAM_ACTION\][\s\S]*?\[\/PAM_ACTION\]/g, '').trim())
+          } catch { /* partial */ }
+        }
+      }
+
+      // Reload messages from DB (includes saved assistant message with id)
+      await loadMessages(threadId)
+      setStreamText('')
+      await loadThreads()
+
+      // If PAM proposed an action, find the message id and set pending
+      if (pamAction) {
+        setMessages(prev => {
+          const last = [...prev].reverse().find(
+            m => m.role === 'assistant' && m.action_type && m.action_confirmed === null
+          )
+          if (last) {
+            setPendingAction({ ...pamAction!, messageId: last.id })
+          }
+          return prev
+        })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error(msg)
+      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
+    } finally {
+      setIsStreaming(false)
+    }
+  }, [input, isStreaming, activeThread, createThread, projectId, selectedProvider, selectedModel, loadMessages, loadThreads])
+
+  // ── Handle action confirm/reject ──────────────────────────────────────────
+  const handleAction = useCallback(async (confirmed: boolean) => {
+    if (!pendingAction) return
+    const { messageId } = pendingAction
+    setPendingAction(null)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/pam/message', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ messageId, confirmed }),
+    })
+    const data = await res.json()
+
+    if (confirmed && data.executed) {
+      toast.success('Done — project updated.')
+      await loadProjectData()
+    } else if (!confirmed) {
+      toast.info('Action cancelled.')
+    }
+
+    // Reload messages to show updated action_confirmed state
+    if (activeThread) await loadMessages(activeThread)
+  }, [pendingAction, loadProjectData, activeThread, loadMessages])
+ 
+  const handleMarkReminderDone = useCallback(async (reminderId: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`/api/pam/reminders/${reminderId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ done: true }),
+    })
+    setReminders(prev => prev.filter(r => r.id !== reminderId))
+  }, [])
+
+  // ── Archive thread ────────────────────────────────────────────────────────
+  const archiveThread = useCallback(async (threadId: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`/api/pam/thread/${threadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ archived: true }),
+    })
+
+    // Summarise thread in background for cross-thread memory
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch('/api/pam/summarise', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          threadId,
+          provider: selectedProvider,
+          model:    selectedModel,
+        }),
+      }).catch(() => { /* non-fatal */ })
+    })
+    if (activeThread === threadId) {
+      setActiveThread(null)
+      setMessages([])
+    }
+    await loadThreads()
+    toast.success('Thread archived')
+  }, [activeThread, loadThreads, selectedProvider, selectedModel])
+
+  // ── Rename thread ─────────────────────────────────────────────────────────
+  const renameThread = useCallback(async (threadId: string, title: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch(`/api/pam/thread/${threadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ title }),
+    })
+    await loadThreads()
+  }, [loadThreads])
+
+  const modelOptions = MODELS.map(m => ({ value: m.model, label: m.label }))
+
+  const currentModelMeta = MODELS.find(m => m.model === selectedModel)
 
   if (loading) return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 24, gap: 16 }}>
-      <div style={{ height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, width: '40%' }} />
-      <div style={{ flex: 1, background: 'rgba(255,255,255,0.03)', borderRadius: 12 }} />
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#07070f' }}>
+      <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Loading PAM...</div>
     </div>
   )
 
@@ -317,1009 +1267,708 @@ function AgentRunnerContent() {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: 'calc(100vh - 104px)',
-      background: '#000',
+      height: 'calc(100vh - 68px)',
+      background: 'linear-gradient(160deg,rgba(var(--accent-rgb),0.03) 0%,transparent 50%),#07070f',
     }}>
-      <title>{`Reminisce — Agent — ${project?.name}`}</title>
-  
-      {/* ── TOP BAR ── */}
+      <title>{`PAM — ${project?.name ?? 'Project'}`}</title>
+
+      <style>{`
+        .thread-item:hover .thread-actions { opacity: 1 !important; }
+        @keyframes pamBounce {
+          0%,80%,100%{transform:scale(0.6);opacity:0.4}
+          40%{transform:scale(1);opacity:1}
+        }
+        @keyframes pamPulse {
+          0%,100%{opacity:1}50%{opacity:0.35}
+        }
+      `}</style>
+
+      {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div style={{
-        height: 52,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        height: 52, borderBottom: '1px solid rgba(255,255,255,0.08)',
         display: 'flex', alignItems: 'center',
-        padding: '0 20px', gap: 10,
-        flexShrink: 0,
-        background: 'rgba(0,0,0,0.5)',
+        padding: '0 16px', gap: 10, flexShrink: 0,
+        background: 'rgba(8,8,20,0.8)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
       }}>
-        <span style={{
-          fontSize: 11, fontWeight: 500,
-          letterSpacing: '0.03em', color: 'rgba(255,255,255,0.35)',
-          textTransform: 'none', flexShrink: 0,
-        }}>
-          Agent
-        </span>
-  
-        {/* Feature selector */}
-        <CustomSelect
-          value={selectedFeatureId}
-          onChange={setSelectedFeatureId}
-          options={[
-            { value: '', label: 'All features' },
-            ...features.map(f => ({
-              value: f.id,
-              label: f.name,
-            }))
-          ]}
-          width={180}
-          compact
-        />
-  
+        {/* PAM identity */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{
+            width: 26, height: 26, borderRadius: 8,
+            background: hexToRgba(accent, 0.15),
+            border: `1px solid ${hexToRgba(accent, 0.35)}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, color: accent,
+            animation: 'pamPulse 3s ease-in-out infinite',
+          }}>✦</div>
+          <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.04em' }}>PAM</span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}>Project Action Manager</span>
+        </div>
+
+        <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }}/>
+
         {/* Model selector */}
         <CustomSelect
           value={selectedModel}
           onChange={val => {
-            const m = MODELS.find(x => x.model === val)
+            const m = MODELS.find((x) => x.model === val)
             if (m) {
               setSelectedModel(m.model)
               setSelectedProvider(m.provider)
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('wizard_model', m.model)
+                localStorage.setItem('wizard_provider', m.provider)
+              }
             }
           }}
           options={modelOptions}
-          width={160}
+          width={180}
           compact
         />
 
-        {selectedModel.includes(':free') && (
+        {currentModelMeta?.free && (
           <span style={{
-            fontSize: 10,
-            color: 'rgba(255,255,255,0.2)',
-            fontStyle: 'italic',
-            display: 'flex', alignItems: 'center',
-            gap: 4,
-          }}
-          title="OpenRouter free models require a payment method on your OpenRouter account. Rate limit: 20 req/min."
-          >
-            ⓘ requires openrouter.ai account
-          </span>
+            fontSize: 9, fontWeight: 800, padding: '2px 7px',
+            borderRadius: 999, background: 'rgba(16,185,129,0.1)',
+            border: '1px solid rgba(16,185,129,0.25)', color: '#10b981',
+          }}>FREE</span>
         )}
-  
-        {(() => {
-          const MODEL_COSTS: Record<string, {
-            currency: string, amount: number
-          }> = {
-            'meta-llama/llama-3.3-70b-instruct:free':
-              { currency: 'coins', amount: 1 },
-            'google/gemini-2.0-flash-exp:free':
-              { currency: 'coins', amount: 1 },
-            'mistralai/mistral-7b-instruct:free':
-              { currency: 'coins', amount: 1 },
-            'mistralai/mistral-small-3.1-24b-instruct:free':
-              { currency: 'coins', amount: 1 },
-            'nvidia/llama-3.1-nemotron-super-49b-v1:free':
-              { currency: 'coins', amount: 1 },
-            'nvidia/llama-nemotron-nano-8b-instruct:free':
-              { currency: 'coins', amount: 1 },
-            'mistral-small-latest':
-              { currency: 'gems', amount: 1 },
-            'mistral-large-latest':
-              { currency: 'gems', amount: 2 },
-            'gemini-2.0-flash':
-              { currency: 'gems', amount: 1 },
-            'claude-sonnet-4-20250514':
-              { currency: 'gems', amount: 3 },
-            'gpt-4o':
-              { currency: 'gems', amount: 3 },
-          }
-          const cost = MODEL_COSTS[selectedModel]
-          if (!cost) return null
-          const icon = cost.currency === 'gems' 
-            ? '💎' : '🪙'
-          return (
-            <span style={{
-              fontSize: 10, fontWeight: 600,
-              color: cost.currency === 'gems'
-                ? '#a78bfa' : 'rgba(255,255,255,0.3)',
-              padding: '3px 8px',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 999,
-              fontFamily: 'monospace',
-            }}>
-              {icon} {cost.amount}
-            </span>
-          )
-        })()}
 
-        {prompts.length > 0 && (
-          <div 
-            style={{ position: 'relative' }}
-            data-prompt-picker="true"
-          >
-            <button
-              onClick={() => 
-                setShowPromptPicker(prev => !prev)}
-              style={{
-                display: 'flex', alignItems: 'center',
-                gap: 5, padding: '5px 12px',
-                border: `1px solid ${showPromptPicker
-                  ? hexToRgba(accent, 0.4)
-                  : 'rgba(255,255,255,0.1)'}`,
-                borderRadius: 8,
-                background: showPromptPicker
-                  ? hexToRgba(accent, 0.08)
-                  : 'transparent',
-                color: showPromptPicker
-                  ? accent : 'rgba(255,255,255,0.45)',
-                fontSize: 11, fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                flexShrink: 0,
-              }}
-            >
-              Load prompt
-              <span style={{
-                fontSize: 9, fontWeight: 700,
-                padding: '1px 5px',
-                borderRadius: 999,
-                background: hexToRgba(accent, 0.15),
-                color: accent,
-              }}>
-                {prompts.length}
-              </span>
-            </button>
+        <div style={{ flex: 1 }}/>
 
-            {/* Prompt picker dropdown */}
-            {showPromptPicker && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  left: 0,
-                  width: 340,
-                  background: '#111',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: 12,
-                  zIndex: 100,
-                  boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-                  overflow: 'hidden',
-                  maxHeight: 320,
-                  overflowY: 'auto',
-                }}
-              >
-                <div style={{
-                  padding: '10px 14px',
-                  borderBottom: '1px solid rgba(255,255,255,0.07)',
-                  fontSize: 10, fontWeight: 600,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  color: 'rgba(255,255,255,0.35)',
-                }}>
-                  Select a prompt to load
-                </div>
-                {prompts.map(p => {
-                  const typeColors: Record<string,string> = {
-                    FEATURE_BUILD: '#3b82f6',
-                    BUG_FIX: '#ef4444',
-                    REFACTOR: '#f59e0b',
-                    API_TEST: '#10b981',
-                    ARCHITECTURE: '#8b5cf6',
-                  }
-                  const tc = typeColors[p.prompt_type] 
-                    || '#6b7280'
-                  return (
-                    <div
-                      key={p.id}
-                      onClick={() => handleLoadPrompt(p.id)}
-                      style={{
-                        padding: '10px 14px',
-                        borderBottom: 
-                          '1px solid rgba(255,255,255,0.05)',
-                        cursor: 'pointer',
-                        transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.background 
-                          = 'rgba(255,255,255,0.06)'
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.background 
-                          = 'transparent'
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center', gap: 7,
-                        marginBottom: 4,
-                      }}>
-                        <span style={{
-                          fontSize: 8, fontWeight: 800,
-                          padding: '2px 5px',
-                          borderRadius: 3,
-                          background: `${tc}20`,
-                          color: tc,
-                          border: `1px solid ${tc}40`,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                          flexShrink: 0,
-                        }}>
-                          {p.prompt_type?.replace('_',' ') || 'PROMPT'}
-                        </span>
-                        {(p.features as {name:string}|undefined)?.name && (
-                          <span style={{
-                            fontSize: 10,
-                            color: 'rgba(255,255,255,0.4)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {(p.features as {name:string}).name}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{
-                        fontSize: 11,
-                        color: 'rgba(255,255,255,0.55)',
-                        lineHeight: 1.45,
-                        overflow: 'hidden',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical' as const,
-                      }}>
-                        {p.raw_prompt?.slice(0, 100)}
-                        {(p.raw_prompt?.length || 0) > 100 ? '...' : ''}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-  
-        <div style={{ flex: 1 }} />
-  
+        {/* New thread */}
         <button
-          onClick={handleClearHistory}
-          style={{
-            background: 'transparent', border: 'none',
-            fontSize: 11, fontWeight: 500,
-            letterSpacing: '0.03em', textTransform: 'none',
-            color: 'rgba(255,255,255,0.2)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 5,
-            transition: 'color 0.15s',
+          onClick={async () => {
+            // Summarise current thread in background before opening new one
+            if (activeThread && messages.length > 0) {
+              const { data: { session } } = await supabase.auth.getSession()
+              fetch('/api/pam/summarise', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${session?.access_token}`,
+                },
+                body: JSON.stringify({
+                  threadId: activeThread,
+                  provider: selectedProvider,
+                  model:    selectedModel,
+                }),
+              }).catch(() => { /* non-fatal */ })
+            }
+            const id = await createThread()
+            setActiveThread(id)
+            setMessages([])
+            setPendingAction(null)
+            setStreamText('')
           }}
-          onMouseEnter={e => 
-            e.currentTarget.style.color = '#ef4444'
-          }
-          onMouseLeave={e => 
-            e.currentTarget.style.color = 'rgba(255,255,255,0.2)'
-          }
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px',
+            background: hexToRgba(accent, 0.1),
+            border: `1px solid ${hexToRgba(accent, 0.25)}`,
+            borderRadius: 8, cursor: 'pointer',
+            fontSize: 11, fontWeight: 700, color: accent,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = hexToRgba(accent, 0.18) }}
+          onMouseLeave={e => { e.currentTarget.style.background = hexToRgba(accent, 0.1) }}
         >
-          <Trash2 size={11} /> Clear
+          <Plus size={13}/> New chat
         </button>
       </div>
-  
-      {/* ── THREE PANELS ── */}
-      <div style={{
-        flex: 1, display: 'flex', overflow: 'hidden',
-      }}>
-  
-        {/* LEFT PANEL — Run History */}
+
+      {/* ── TWO PANELS ──────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+        {/* LEFT — Thread list */}
         <div style={{
-          width: 260, flexShrink: 0,
-          borderRight: '1px solid rgba(255,255,255,0.06)',
+          width: 240, flexShrink: 0,
+          borderRight: '1px solid rgba(255,255,255,0.08)',
           display: 'flex', flexDirection: 'column',
+          background: 'rgba(255,255,255,0.015)',
           overflow: 'hidden',
         }}>
-            <div style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 11, fontWeight: 500,
-              letterSpacing: '0.03em', textTransform: 'none',
-              color: 'rgba(255,255,255,0.35)',
-            }}>
-              Run history
-            </div>
           <div style={{
-            flex: 1, overflowY: 'auto', padding: '8px',
+            padding: '10px 12px 8px',
+            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            flexShrink: 0,
           }}>
-            {loading && (
-              <div style={{
-                padding: 16, fontSize: 11,
-                color: 'rgba(255,255,255,0.2)',
-                textAlign: 'center',
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', marginBottom: 8,
+            }}>
+              <span style={{
+                fontSize: 9, fontWeight: 800,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase' as const,
+                color: 'rgba(255,255,255,0.25)',
               }}>
-                Loading...
-              </div>
-            )}
-            {!loading && history.length === 0 && (
-              <div style={{
-                padding: '24px 16px', fontSize: 11,
-                color: 'rgba(255,255,255,0.2)',
-                textAlign: 'center', lineHeight: 1.6,
-              }}>
-                No runs yet. Send a message to start.
-              </div>
-            )}
-            {history.map(run => (
-              <div
-                key={run.id}
+                Threads
+              </span>
+              {/* Daily briefing button */}
+              <button
+                onClick={sendBriefing}
+                disabled={briefingLoading || isStreaming}
+                title="Daily project briefing"
                 style={{
-                  padding: '10px 12px',
-                  borderRadius: 8, marginBottom: 4,
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  cursor: 'default',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '4px 10px',
+                  background: hexToRgba(accent, 0.1),
+                  border: `1px solid ${hexToRgba(accent, 0.22)}`,
+                  borderRadius: 8, cursor: 'pointer',
+                  fontSize: 10, fontWeight: 700,
+                  color: accent,
+                  opacity: (briefingLoading || isStreaming) ? 0.45 : 1,
+                  transition: 'all 0.15s',
+                  whiteSpace: 'nowrap' as const,
+                }}
+                onMouseEnter={e => {
+                  if (!briefingLoading && !isStreaming)
+                    e.currentTarget.style.background = hexToRgba(accent, 0.18)
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = hexToRgba(accent, 0.1)
                 }}
               >
-                {/* Status badge */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center', gap: 6,
-                  marginBottom: 5,
-                }}>
-                  <div style={{
-                    width: 6, height: 6,
-                    borderRadius: '50%',
-                    background: run.status === 'complete'
-                      ? '#10b981'
-                      : run.status === 'failed'
-                      ? '#ef4444'
-                      : run.status === 'running'
-                      ? accent
-                      : 'rgba(255,255,255,0.3)',
-                    animation: run.status === 'running'
-                      ? 'agentPulse 1s infinite'
-                      : 'none',
-                  }} />
-                  <span style={{
-                    fontSize: 9, fontWeight: 700,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    color: run.status === 'complete'
-                      ? '#10b981'
-                      : run.status === 'failed'
-                      ? '#ef4444'
-                      : 'rgba(255,255,255,0.35)',
-                  }}>
-                    {run.status}
-                  </span>
-                  <span style={{
-                    marginLeft: 'auto',
-                    fontSize: 9,
-                    color: 'rgba(255,255,255,0.2)',
-                    fontFamily: 'monospace',
-                  }}>
-                    {new Date(run.started_at)
-                      .toLocaleTimeString([], {
-                        hour: '2-digit', minute: '2-digit'
-                      })}
-                  </span>
-                </div>
-                <div style={{
-                  fontSize: 11, fontWeight: 600,
-                  color: 'rgba(255,255,255,0.65)',
-                  marginBottom: 2,
-                }}>
-                  {run.features?.name || 'General'}
-                </div>
-                <div style={{
-                  fontSize: 10,
-                  color: 'rgba(255,255,255,0.25)',
-                  fontFamily: 'monospace',
-                }}>
-                  {run.model_used}
-                </div>
+                {briefingLoading ? (
+                  <>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: accent,
+                      animation: 'pamPulse 1s infinite',
+                    }}/>
+                    Briefing...
+                  </>
+                ) : (
+                  <>☀️ Briefing</>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
+            {threads.length === 0 && (
+              <div style={{
+                padding: '20px 12px', textAlign: 'center',
+                fontSize: 11, color: 'rgba(255,255,255,0.2)', lineHeight: 1.6,
+              }}>
+                No threads yet.<br/>Start a new chat above.
+              </div>
+            )}
+            {threads.map(thread => (
+              <div key={thread.id} className="thread-item">
+                <ThreadItem
+                  thread={thread}
+                  isActive={activeThread === thread.id}
+                  accent={accent}
+                  onSelect={() => selectThread(thread.id)}
+                  onRename={title => renameThread(thread.id, title)}
+                  onArchive={() => archiveThread(thread.id)}
+                />
               </div>
             ))}
           </div>
         </div>
-  
-        {/* CENTER PANEL — Chat */}
+
+        {/* RIGHT — Chat */}
         <div style={{
-          flex: 1, display: 'flex',
-          flexDirection: 'column', overflow: 'hidden',
-          minWidth: 0,
+          flex: 1, display: 'flex', flexDirection: 'column',
+          overflow: 'hidden', minWidth: 0,
         }}>
+
           {/* Context injection banner */}
           {project && (
             <div style={{
               padding: '7px 20px',
-              background: hexToRgba(accent, 0.04),
-              borderBottom: `1px solid ${
-                hexToRgba(accent, 0.1)}`,
-              display: 'flex', alignItems: 'center',
-              gap: 8, flexShrink: 0, flexWrap: 'wrap',
+              background: hexToRgba(accent, 0.05),
+              borderBottom: `1px solid ${hexToRgba(accent, 0.12)}`,
+              display: 'flex', alignItems: 'center', gap: 8,
+              flexShrink: 0,
             }}>
               <div style={{
                 width: 6, height: 6, borderRadius: '50%',
                 background: accent,
-                animation: 'agentPulse 2s infinite',
-                flexShrink: 0,
-              }} />
-              <span style={{
-                fontSize: 11,
-                color: 'rgba(255,255,255,0.35)',
-              }}>
-                Context injected:
-              </span>
-              <span style={{
-                fontSize: 11, fontWeight: 600,
-                color: accent, fontFamily: 'monospace',
-              }}>
+                animation: 'pamPulse 2.5s infinite', flexShrink: 0,
+              }}/>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Context:</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: accent, fontFamily: 'monospace' }}>
                 {project.name}
               </span>
-              {selectedFeatureId && features.find(
-                f => f.id === selectedFeatureId
-              ) && (
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>·</span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                {phases.length} phases · {features.length} features · {contextFiles.length} context files
+              </span>
+              {memoryCount > 0 && (
                 <>
-                  <span style={{
-                    color: 'rgba(255,255,255,0.2)',
-                  }}>·</span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>·</span>
                   <span style={{
                     fontSize: 11,
-                    color: 'rgba(255,255,255,0.5)',
+                    color: hexToRgba(accent, 0.8),
+                    fontWeight: 600,
                   }}>
-                    {features.find(
-                      f => f.id === selectedFeatureId
-                    )?.name}
+                    {memoryCount} memory{memoryCount !== 1 ? ' entries' : ''}
                   </span>
                 </>
               )}
             </div>
           )}
-  
+
           {/* Messages */}
           <div style={{
             flex: 1, overflowY: 'auto',
-            padding: '20px',
-            display: 'flex', flexDirection: 'column',
-            gap: 20,
+            padding: '24px 24px 8px',
+            display: 'flex', flexDirection: 'column', gap: 20,
           }}>
-            {!loading && history.length === 0 
-             && !isRunning && (
+            {/* Risk detection banner */}
+            {riskBanner && !riskDismissed && (
               <div style={{
-                flex: 1, display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '40px 24px',
-                gap: 16,
+                background: 'rgba(239,68,68,0.07)',
+                border: '1px solid rgba(239,68,68,0.22)',
+                borderRadius: 14, padding: '12px 16px',
+                display: 'flex', alignItems: 'flex-start',
+                gap: 12, flexShrink: 0,
               }}>
-                <div style={{
-                  width: 52, height: 52,
-                  borderRadius: 14,
-                  background: hexToRgba(accent, 0.1),
-                  border: `1px solid ${hexToRgba(accent, 0.25)}`,
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 22,
-                }}>✦</div>
-                <div style={{
-                  fontSize: 18, fontWeight: 700,
-                  color: '#fff', textAlign: 'center',
-                }}>
-                  Ask anything about your project
+                <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 12, fontWeight: 700, color: '#f87171',
+                    marginBottom: 4,
+                  }}>
+                    PAM detected {riskBanner.blockedCount} blocked feature{riskBanner.blockedCount !== 1 ? 's' : ''}
+                  </div>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: 2,
+                  }}>
+                    {riskBanner.items.map((item, i) => (
+                      <div key={i} style={{
+                        fontSize: 11, color: 'rgba(255,255,255,0.45)',
+                      }}>
+                        · {item}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setInput('What are the blockers in this project and how should I resolve them?')
+                      setRiskDismissed(true)
+                    }}
+                    style={{
+                      marginTop: 10, padding: '5px 12px',
+                      background: 'rgba(239,68,68,0.12)',
+                      border: '1px solid rgba(239,68,68,0.25)',
+                      borderRadius: 8, cursor: 'pointer',
+                      fontSize: 11, fontWeight: 700,
+                      color: '#f87171',
+                    }}
+                  >
+                    Ask PAM about blockers →
+                  </button>
                 </div>
-                <div style={{
-                  fontSize: 13,
-                  color: 'rgba(255,255,255,0.4)',
-                  textAlign: 'center', maxWidth: 340,
-                  lineHeight: 1.6,
-                }}>
-                  Full project context is injected 
-                  automatically into every message — 
-                  no prompt engineering needed.
-                </div>
-                {/* Suggestion chips */}
-                <div style={{
-                  display: 'flex', flexWrap: 'wrap',
-                  gap: 8, justifyContent: 'center',
-                  marginTop: 8, maxWidth: 480,
-                }}>
-                  {[
-                    'Summarize Phase 3 progress',
-                    'Identify architectural risks',
-                    'Generate test cases for auth flow',
-                    'Review deployment checklist',
-                  ].map(suggestion => (
-                    <button
-                      key={suggestion}
-                      onClick={() => {
-                        setUserInput(suggestion)
-                      }}
-                      style={{
-                        padding: '7px 14px',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 999,
-                        background: 'rgba(255,255,255,0.04)',
-                        color: 'rgba(255,255,255,0.55)',
-                        fontSize: 12, fontWeight: 500,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.borderColor 
-                          = accent
-                        e.currentTarget.style.color 
-                          = accent
-                        e.currentTarget.style.background 
-                          = hexToRgba(accent, 0.08)
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.borderColor 
-                          = 'rgba(255,255,255,0.1)'
-                        e.currentTarget.style.color 
-                          = 'rgba(255,255,255,0.55)'
-                        e.currentTarget.style.background 
-                          = 'rgba(255,255,255,0.04)'
-                      }}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  onClick={() => setRiskDismissed(true)}
+                  style={{
+                    background: 'none', border: 'none',
+                    cursor: 'pointer', color: 'rgba(255,255,255,0.25)',
+                    fontSize: 16, lineHeight: 1, padding: '0 2px',
+                    flexShrink: 0,
+                  }}
+                >×</button>
               </div>
             )}
-  
-            {history.map(run => {
-              const displayInput = run.input || localInputs[run.id]
+            {/* Empty state */}
+            {!activeThread && messages.length === 0 && !isStreaming && (
+              <div style={{
+                flex: 1, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                padding: '40px 24px', gap: 20,
+              }}>
+                <div style={{
+                  width: 64, height: 64, borderRadius: 20,
+                  background: hexToRgba(accent, 0.1),
+                  border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                  boxShadow: `0 0 40px ${hexToRgba(accent, 0.15)}`,
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 28, color: accent,
+                  animation: 'pamPulse 3s ease-in-out infinite',
+                }}>✦</div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', textAlign: 'center', marginBottom: 8 }}>
+                    Hi, I&apos;m PAM
+                  </div>
+                  <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', textAlign: 'center', maxWidth: 360, lineHeight: 1.65 }}>
+                    I know everything about <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{project?.name}</strong>.
+                    Ask me anything, or let me take action on your project.
+                  </div>
+                </div>
+                <SuggestionChips
+                  accent={accent}
+                  phases={phases}
+                  features={features}
+                  onSelect={text => setInput(text)}
+                />
+              </div>
+            )}
+
+            {/* Message list */}
+            {messages.map((msg) => {
+              if (msg.role === 'system') return null
+              const isUser = msg.role === 'user'
               return (
-                <div key={run.id} style={{
-                  display: 'flex', flexDirection: 'column',
-                  gap: 14,
+                <div key={msg.id} style={{
+                  display: 'flex', gap: 12,
+                  flexDirection: isUser ? 'row-reverse' : 'row',
+                  alignItems: 'flex-start',
                 }}>
-                  {displayInput && (
-                    <div style={{
-                      display: 'flex', gap: 10,
-                      alignItems: 'flex-start',
-                      flexDirection: 'row-reverse',
-                    }}>
+                  {/* Avatar */}
+                  <div style={{
+                    width: 30, height: 30, borderRadius: 9,
+                    background: isUser ? hexToRgba(accent, 0.18) : hexToRgba(accent, 0.08),
+                    border: `1px solid ${hexToRgba(accent, isUser ? 0.35 : 0.2)}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                    fontSize: isUser ? 11 : 14,
+                    fontWeight: 700, color: accent,
+                  }}>
+                    {isUser ? 'U' : '✦'}
+                  </div>
+
+                  {/* Bubble */}
+                  <div style={{
+                    maxWidth: '78%',
+                    background: isUser
+                      ? hexToRgba(accent, 0.1)
+                      : 'rgba(255,255,255,0.045)',
+                    border: `1px solid ${isUser ? hexToRgba(accent, 0.2) : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                    padding: '12px 16px',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                  }}>
+                    {/* Action badge */}
+                    {!isUser && msg.action_type && (
                       <div style={{
-                        width: 28, height: 28, borderRadius: 8,
-                        background: hexToRgba(accent, 0.15),
-                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
-                        display: 'flex', alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        fontSize: 11, fontWeight: 700,
-                        color: accent,
-                      }}>U</div>
-                      <div style={{
-                        background: hexToRgba(accent, 0.1),
-                        border: `1px solid ${hexToRgba(accent, 0.18)}`,
-                        borderRadius: '16px 16px 4px 16px',
-                        padding: '10px 14px', maxWidth: '70%',
-                        fontSize: 13, color: '#fff',
-                        lineHeight: 1.65, whiteSpace: 'pre-wrap',
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        marginBottom: 10, paddingBottom: 8,
+                        borderBottom: `1px solid ${hexToRgba(accent, 0.15)}`,
                       }}>
-                        {displayInput}
-                      </div>
-                    </div>
-                  )}
-                  {run.output && (
-                    <div style={{
-                      display: 'flex', gap: 10,
-                      alignItems: 'flex-start',
-                    }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8,
-                        background: hexToRgba(accent, 0.08),
-                        border: `1px solid ${hexToRgba(accent, 0.2)}`,
-                        display: 'flex', alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0, fontSize: 13, color: accent,
-                      }}>✦</div>
-                      <div style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.07)',
-                        borderRadius: '16px 16px 16px 4px',
-                        padding: '12px 16px', maxWidth: '85%',
-                        fontSize: 13,
-                        color: 'rgba(255,255,255,0.85)',
-                        lineHeight: 1.75,
-                      }}>
-                        {run.features?.name && (
-                          <div style={{
-                            fontSize: 9, fontWeight: 800,
-                            color: accent, textTransform: 'uppercase',
-                            letterSpacing: '0.1em', marginBottom: 8,
-                            paddingBottom: 7,
-                            borderBottom: `1px solid ${
-                              hexToRgba(accent, 0.15)}`,
-                          }}>
-                            {run.features.name}
-                          </div>
+                        <Zap size={10} color={accent}/>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: accent, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                          Action proposed
+                        </span>
+                        {msg.action_confirmed === true && (
+                          <span style={{ fontSize: 9, color: '#10b981', marginLeft: 'auto' }}>✓ Executed</span>
                         )}
-                        <div className="prose prose-invert 
-                          prose-sm max-w-none
-                          prose-code:text-[var(--accent-primary)]
-                          prose-code:bg-white/5
-                          prose-code:px-1.5 prose-code:rounded
-                          prose-pre:bg-white/5
-                          prose-pre:border prose-pre:border-white/10
-                          prose-code:before:content-none
-                          prose-code:after:content-none">
-                          <ReactMarkdown>
-                            {run.output}
-                          </ReactMarkdown>
-                        </div>
+                        {msg.action_confirmed === false && (
+                          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginLeft: 'auto' }}>Cancelled</span>
+                        )}
                       </div>
+                    )}
+
+                    {/* Content */}
+                    <div
+                      className="prose prose-invert prose-sm max-w-none prose-code:text-[var(--accent-primary)] prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10 prose-code:before:content-none prose-code:after:content-none"
+                      style={{ fontSize: 13, color: isUser ? '#fff' : 'rgba(255,255,255,0.88)', lineHeight: 1.75 }}
+                    >
+                      {isUser
+                        ? <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                        : <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      }
                     </div>
-                  )}
+
+                    {/* Timestamp */}
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 8, textAlign: isUser ? 'right' : 'left' }}>
+                      {formatTime(msg.created_at)}
+                      {msg.tokens_used && !isUser ? ` · ~${msg.tokens_used} tokens` : ''}
+                    </div>
+                  </div>
                 </div>
               )
             })}
-  
-            {isRunning && (
-              <div style={{
-                display: 'flex', gap: 10,
-                alignItems: 'flex-start',
-              }}>
+
+            {/* Streaming bubble */}
+            {isStreaming && (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <div style={{
-                  width: 28, height: 28, borderRadius: 8,
+                  width: 30, height: 30, borderRadius: 9,
                   background: hexToRgba(accent, 0.08),
                   border: `1px solid ${hexToRgba(accent, 0.2)}`,
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0, fontSize: 13, color: accent,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, fontSize: 14, color: accent,
+                  animation: 'pamPulse 1.5s infinite',
                 }}>✦</div>
                 <div style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.07)',
+                  maxWidth: '78%',
+                  background: 'rgba(255,255,255,0.045)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: '16px 16px 16px 4px',
-                  padding: '12px 16px', maxWidth: '85%',
-                  fontSize: 13,
-                  color: 'rgba(255,255,255,0.85)',
-                  lineHeight: 1.75, minWidth: 60,
+                  padding: '12px 16px',
+                  fontSize: 13, color: 'rgba(255,255,255,0.88)', lineHeight: 1.75,
+                  minWidth: 60,
                 }}>
-                  {output ? (
-                    <div className="prose prose-invert prose-sm">
-                      <ReactMarkdown>{output}</ReactMarkdown>
+                  {streamText ? (
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown>{streamText}</ReactMarkdown>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 4 }}>
                       {[0, 0.2, 0.4].map((d, i) => (
                         <div key={i} style={{
-                          width: 5, height: 5,
-                          borderRadius: '50%',
+                          width: 5, height: 5, borderRadius: '50%',
                           background: 'rgba(255,255,255,0.4)',
-                          animation: 'agentBounce 1.2s infinite',
+                          animation: `pamBounce 1.2s infinite`,
                           animationDelay: `${d}s`,
-                        }} />
+                        }}/>
                       ))}
                     </div>
                   )}
                 </div>
               </div>
             )}
-            <div ref={messageEndRef} />
+
+            <div ref={messagesEndRef}/>
           </div>
-  
-          {/* Input */}
-          <div style={{
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            padding: '14px 20px', flexShrink: 0,
-            background: 'rgba(0,0,0,0.4)',
-          }}>
-            {initialPrompt && !output && history.length === 0 && (
-              <div style={{
-                margin: '0 0 12px',
-                padding: '10px 14px',
-                background: hexToRgba(accent, 0.08),
-                border: `1px solid ${hexToRgba(accent, 0.2)}`,
-                borderRadius: 8,
-                fontSize: 12,
-                color: 'rgba(255,255,255,0.55)',
-                lineHeight: 1.5,
-              }}>
-                <span style={{ 
-                  color: accent, fontWeight: 600 
-                }}>
-                  Prompt loaded from Prompts Studio.
-                </span>
-                {' '}Review and press Enter to send, 
-                or edit before sending.
+
+          {/* ── ACTION CONFIRM BAR ───────────────────────────────────────── */}
+          {pendingAction && !isStreaming && (
+            <div style={{
+              margin: '0 20px 8px',
+              padding: '12px 16px',
+              background: hexToRgba(accent, 0.08),
+              border: `1px solid ${hexToRgba(accent, 0.3)}`,
+              borderRadius: 12,
+              display: 'flex', alignItems: 'center', gap: 12,
+              flexShrink: 0,
+            }}>
+              <AlertCircle size={15} color={accent} style={{ flexShrink: 0 }}/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#fff', marginBottom: 2 }}>
+                  PAM wants to: {actionLabel(pendingAction.actionType, pendingAction.actionPayload)}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                  This will update your project data. Confirm to proceed.
+                </div>
               </div>
-            )}
-            {selectedPromptId && !isRunning && 
-             history.length === 0 && !output && (
-              <div style={{
-                margin: '0 20px 8px',
-                padding: '8px 14px',
-                background: hexToRgba(accent, 0.07),
-                border: `1px solid ${hexToRgba(accent, 0.2)}`,
-                borderRadius: 8,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-              }}>
-                <span style={{
-                  fontSize: 11,
-                  color: 'rgba(255,255,255,0.5)',
-                }}>
-                  <span style={{ color: accent, fontWeight: 600 }}>
-                    Prompt loaded.
-                  </span>
-                  {' '}Edit or press Enter to run.
-                </span>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <button
-                  onClick={() => {
-                    setUserInput('')
-                    setSelectedPromptId('')
-                  }}
+                  onClick={() => handleAction(false)}
                   style={{
-                    background: 'transparent', border: 'none',
-                    color: 'rgba(255,255,255,0.2)',
-                    cursor: 'pointer', fontSize: 14,
-                    lineHeight: 1, padding: '0 4px',
+                    padding: '6px 14px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 8, cursor: 'pointer',
+                    fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.5)',
                   }}
                 >
-                  ×
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleAction(true)}
+                  style={{
+                    padding: '6px 14px',
+                    background: accent, border: 'none',
+                    borderRadius: 8, cursor: 'pointer',
+                    fontSize: 11, fontWeight: 800, color: '#000',
+                    boxShadow: `0 0 20px ${hexToRgba(accent, 0.4)}`,
+                  }}
+                >
+                  Confirm
                 </button>
               </div>
-            )}
-            <div style={{ display: 'flex', gap: 8 }}>
+            </div>
+          )}
+
+          {/* ── CONTEXT DRAWER ──────────────────────────────────────────── */}
+          <ContextDrawer
+            accent={accent}
+            contextFiles={contextFiles}
+            phases={phases}
+            features={features}
+            drawerOpen={drawerOpen}
+            setDrawerOpen={setDrawerOpen}
+            remindersData={reminders}
+            onMarkDone={handleMarkReminderDone}
+          />
+
+          {/* ── INPUT ───────────────────────────────────────────────────── */}
+            <div
+              data-pam-input="true"
+              style={{
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+                padding: '12px 20px',
+                background: 'rgba(8,8,20,0.8)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                flexShrink: 0,
+                position: 'relative',
+              }}
+            >
+              {/* Command palette */}
+              {showCommands && (
+                <CommandPalette
+                  query={cmdQuery}
+                  commands={SLASH_COMMANDS}
+                  selectedIndex={cmdIndex}
+                  accent={accent}
+                  onSelect={handleSelectCommand}
+                />
+              )}
+
+              {/* Mention picker */}
+              {showMentions && (
+                <MentionPicker
+                  query={mentionQuery}
+                  phases={phases}
+                  features={features}
+                  selectedIndex={mentionIndex}
+                  accent={accent}
+                  onSelect={handleSelectMention}
+                />
+              )}
+            <div style={{ display: 'flex', gap: 10 }}>
               <textarea
-                value={userInput}
-                onChange={e => setUserInput(e.target.value)}
+                value={input}
+                onChange={e => handleInputChange(e.target.value)}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
                 onKeyDown={e => {
+                  // Navigate command palette
+                  if (showCommands) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setCmdIndex(i => i + 1)
+                      return
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setCmdIndex(i => Math.max(0, i - 1))
+                      return
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const filtered = SLASH_COMMANDS.filter(c =>
+                        c.cmd.includes(cmdQuery.toLowerCase()) ||
+                        c.label.toLowerCase().includes(cmdQuery.toLowerCase())
+                      )
+                      const cmd = filtered[cmdIndex % Math.max(1, filtered.length)]
+                      if (cmd) handleSelectCommand(cmd)
+                      return
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setShowCommands(false)
+                      return
+                    }
+                  }
+                  // Navigate mention picker
+                  if (showMentions) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setMentionIndex(i => i + 1)
+                      return
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setMentionIndex(i => Math.max(0, i - 1))
+                      return
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const q = mentionQuery.toLowerCase()
+                      const allEntities = [
+                        ...features.filter(f => f.name.toLowerCase().includes(q))
+                          .slice(0, 5)
+                          .map(f => ({ type: 'feature' as const, id: f.id, name: f.name, status: f.status })),
+                        ...phases.filter(p => p.name.toLowerCase().includes(q))
+                          .slice(0, 3)
+                          .map(p => ({ type: 'phase' as const, id: p.id, name: p.name, status: p.status })),
+                      ]
+                      const entity = allEntities[mentionIndex % Math.max(1, allEntities.length)]
+                      if (entity) handleSelectMention(entity)
+                      return
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault()
+                      setShowMentions(false)
+                      return
+                    }
+                  }
+                  // Normal send
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    handleRunAgent()
+                    sendMessage()
                   }
                 }}
-                placeholder={isRunning
-                  ? 'Agent is thinking...'
-                  : 'Ask anything about your project...'}
-                disabled={isRunning}
+                ref={inputRef}
+                placeholder={isStreaming ? 'PAM is thinking...' : 'Ask PAM anything about your project...'}
+                disabled={isStreaming}
+                rows={1}
                 style={{
-                  flex: 1,
-                  background: 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${focused
-                    ? accent
-                    : 'rgba(255,255,255,0.1)'}`,
+                  flex: 1, resize: 'none',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${focused ? accent : 'rgba(255,255,255,0.1)'}`,
                   boxShadow: focused ? `0 0 0 3px ${hexToRgba(accent, 0.1)}` : 'none',
-                  borderRadius: 8, padding: '10px 14px',
+                  borderRadius: 10, padding: '10px 14px',
                   fontSize: 13, color: '#fff',
-                  outline: 'none', resize: 'none',
-                  minHeight: 40, maxHeight: 140,
-                  lineHeight: 1.5, fontFamily: 'inherit',
+                  outline: 'none',
+                  minHeight: 42, maxHeight: 140,
+                  lineHeight: 1.55, fontFamily: 'inherit',
                   transition: 'all 0.2s',
-                  opacity: isRunning ? 0.5 : 1,
+                  opacity: isStreaming ? 0.5 : 1,
                 }}
               />
               <button
-                onClick={handleRunAgent}
-                disabled={isRunning || !userInput.trim()}
+                onClick={sendMessage}
+                disabled={isStreaming || !input.trim()}
                 style={{
-                  width: 40, height: 40,
-                  borderRadius: 8, background: accent,
+                  width: 42, height: 42,
+                  borderRadius: 10, background: accent,
                   border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center',
                   justifyContent: 'center', flexShrink: 0,
-                  opacity: (isRunning || !userInput.trim())
-                    ? 0.3 : 1,
+                  opacity: (isStreaming || !input.trim()) ? 0.3 : 1,
                   transition: 'opacity 0.2s',
+                  boxShadow: (!isStreaming && input.trim())
+                    ? `0 0 20px ${hexToRgba(accent, 0.4)}` : 'none',
                 }}
               >
-                <ArrowUp size={16} color="#000" />
+                <ArrowUp size={17} color="#000"/>
               </button>
             </div>
             <div style={{
-              fontSize: 10, marginTop: 5,
+              fontSize: 10, marginTop: 6,
               color: 'rgba(255,255,255,0.12)',
               textAlign: 'center',
             }}>
-              Enter to send · Shift+Enter new line
-              · Full context injected automatically
+              Enter to send · Shift+Enter new line ·{' '}
+              <span
+                style={{ color: 'rgba(255,255,255,0.22)', cursor: 'pointer' }}
+                onClick={() => { setInput('/'); handleInputChange('/') }}
+                title="See all commands"
+              >
+                / commands
+              </span>
+              {' '}·{' '}
+              <span
+                style={{ color: 'rgba(255,255,255,0.22)', cursor: 'pointer' }}
+                onClick={() => { setInput('@'); handleInputChange('@') }}
+                title="Mention a feature or phase"
+              >
+                @ mention
+              </span>
             </div>
-          </div>
-        </div>
-  
-        {/* RIGHT PANEL — Context Injected */}
-        <div style={{
-          width: 240, flexShrink: 0,
-          borderLeft: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
-            <div style={{
-              padding: '12px 16px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 11, fontWeight: 500,
-              letterSpacing: '0.03em', textTransform: 'none',
-              color: 'rgba(255,255,255,0.35)',
-            }}>
-              Context sent to agent
-            </div>
-          <div style={{
-            flex: 1, overflowY: 'auto',
-            padding: '12px 14px',
-          }}>
-            {/* Context files injected */}
-            <div style={{
-              fontSize: 11, fontWeight: 500,
-              color: 'rgba(255,255,255,0.35)',
-              letterSpacing: '0.03em',
-              textTransform: 'none', marginBottom: 10,
-            }}>
-              Injected files
-            </div>
-            {[
-              'context/architecture.md',
-              'context/coding-guidelines.md',
-              'context/ai-governance.md',
-              'context/tech-stack.md',
-            ].map(file => (
-              <div key={file} style={{
-                display: 'flex', alignItems: 'center',
-                gap: 7, padding: '6px 0',
-                borderBottom: '1px solid rgba(255,255,255,0.04)',
-              }}>
-                <span style={{
-                  fontSize: 10, color: '#10b981',
-                  flexShrink: 0,
-                }}>✓</span>
-                <span style={{
-                  fontSize: 10, fontFamily: 'monospace',
-                  color: 'rgba(255,255,255,0.4)',
-                }}>
-                  {file}
-                </span>
-              </div>
-            ))}
-  
-            {/* Token usage */}
-            <div style={{
-              marginTop: 16,
-              paddingTop: 16,
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-            }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.25)',
-                marginBottom: 10,
-              }}>
-                Token Usage
-              </div>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: 6,
-              }}>
-                <span style={{
-                  fontSize: 11,
-                  color: 'rgba(255,255,255,0.35)',
-                }}>
-                  Context
-                </span>
-                <span style={{
-                  fontSize: 11, fontFamily: 'monospace',
-                  color: accent, fontWeight: 700,
-                }}>
-                  {history.length > 0 && history[0]?.output
-                    ? Math.floor(
-                        (history[0].output.length || 0) / 4
-                      ).toLocaleString()
-                    : '—'
-                  }
-                </span>
-              </div>
-              {/* Token bar */}
-              <div style={{
-                height: 4,
-                background: 'rgba(255,255,255,0.07)',
-                borderRadius: 999, overflow: 'hidden',
-                marginBottom: 6,
-              }}>
-                <div style={{
-                  height: '100%',
-                  width: history[0]?.output
-                    ? `${Math.min(
-                        (Math.floor(
-                          (history[0].output.length||0)/4
-                        ) / 8000) * 100, 100
-                      )}%`
-                    : '28%',
-                  background: accent,
-                  borderRadius: 999,
-                }} />
-              </div>
-              <div style={{
-                fontSize: 10,
-                color: 'rgba(255,255,255,0.2)',
-                fontFamily: 'monospace',
-              }}>
-                28% of 8k context window
-              </div>
-            </div>
-  
-            {/* Selected feature */}
-            {selectedFeatureId && features.find(
-              f => f.id === selectedFeatureId
-            ) && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{
-                  fontSize: 11, fontWeight: 500,
-                  color: 'rgba(255,255,255,0.35)',
-                  letterSpacing: '0.03em',
-                  textTransform: 'none',
-                  marginBottom: 8,
-                }}>
-                  Feature scope
-                </div>
-                <div style={{
-                  background: hexToRgba(accent, 0.07),
-                  border: `1px solid ${hexToRgba(accent, 0.2)}`,
-                  borderRadius: 8, padding: '8px 10px',
-                  fontSize: 11, color: accent, fontWeight: 600,
-                }}>
-                  {features.find(
-                    f => f.id === selectedFeatureId
-                  )?.name}
-                </div>
-              </div>
-            )}
-  
-            {/* Token estimate */}
-            {history.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{
-                  fontSize: 11, fontWeight: 500,
-                  color: 'rgba(255,255,255,0.35)',
-                  letterSpacing: '0.03em',
-                  textTransform: 'none', marginBottom: 8,
-                }}>
-                  Last run
-                </div>
-                <div style={{
-                  fontSize: 11,
-                  color: 'rgba(255,255,255,0.4)',
-                  lineHeight: 1.6,
-                }}>
-                  Model: {' '}
-                  <span style={{ color: accent }}>
-                    {history[0]?.model_used}
-                  </span>
-                </div>
-                {history[0]?.output && (
-                  <div style={{
-                    fontSize: 11,
-                    color: 'rgba(255,255,255,0.4)',
-                    marginTop: 4,
-                  }}>
-                    ~{Math.floor(
-                      (history[0].output.length || 0) / 4
-                    ).toLocaleString()} tokens
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
-  
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes agentBounce {
-          0%, 80%, 100% { 
-            transform: scale(0.6); opacity: 0.4; 
-          }
-          40% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes agentPulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.35; }
-        }
-      `}} />
     </div>
   )
 }
 
-export default function AgentRunnerPage() {
-  return <Suspense fallback={<div style={{ flex: 1, background: '#000' }} />}><AgentRunnerContent /></Suspense>
+export default function PAMPage() {
+  return (
+    <Suspense fallback={<div style={{ flex: 1, background: '#07070f' }}/>}>
+      <PAMContent/>
+    </Suspense>
+  )
 }

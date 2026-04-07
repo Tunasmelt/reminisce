@@ -9,14 +9,25 @@ import { Star, LogOut } from 'lucide-react'
 import ThemeToggle from '@/components/theme-toggle'
 import { useTheme } from '@/hooks/useTheme'
 import { User } from '@supabase/supabase-js'
+import { toast } from 'sonner'
+import { getTimeUntilUTCReset } from '@/lib/wallet'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const { accent } = useTheme()
   const [user, setUser] = useState<User | null>(null)
   const [wallet, setWallet] = useState<{ gems: number, coins: number } | null>(null)
+  const [resetLabel, setResetLabel] = useState<string>(getTimeUntilUTCReset())
   const [userPlan, setUserPlan] = useState<'free' | 'pro'>('free')
   const [isMobile, setIsMobile] = useState(false)
+
+  // Update the reset time label every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setResetLabel(getTimeUntilUTCReset())
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -45,6 +56,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               setUserPlan(planData.plan as 'free'|'pro')
             }
           })
+        
+        // Fire daily login reward silently
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.access_token) {
+            fetch('/api/rewards/daily-login', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session.access_token}`,
+              },
+            })
+            .then(r => r.json())
+            .then(result => {
+              if (result.awarded && result.amount > 0) {
+                toast.success(`+${result.amount} coins — daily login reward 🪙`, {
+                  duration: 3000,
+                  position: 'bottom-right',
+                })
+                // Refresh wallet display to show new coins
+                supabase
+                  .from('user_wallets')
+                  .select('gems, coins')
+                  .eq('user_id', data.user!.id)
+                  .single()
+                  .then(({ data: w }) => {
+                    if (w) setWallet(w)
+                  })
+              }
+            })
+            .catch(() => {
+              // Non-fatal — silent fail
+            })
+          }
+        })
       }
     })
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -62,18 +106,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ProtectedRoute>
-      <div style={{ minHeight: '100vh', background: '#000', color: '#fff' }}>
+      <div style={{ minHeight: '100vh', background: '#07070f', color: '#fff', overflowX: 'hidden' }}>
         <header style={{
           position: 'fixed',
           top: 0,
           left: 0,
           right: 0,
           zIndex: 40,
-          height: 56,
-          background: 'rgba(0,0,0,0.85)',
-          backdropFilter: 'blur(20px)',
-          boxShadow: '0 1px 0 rgba(255,255,255,0.04)',
-          padding: isMobile ? '0 16px' : '0 32px',
+          height: 68,
+          background: 'rgba(8,8,20,0.75)',
+          backdropFilter: 'blur(28px)',
+          WebkitBackdropFilter: 'blur(28px)',
+          boxShadow: '0 1px 0 rgba(255,255,255,0.07), 0 4px 24px rgba(0,0,0,0.3)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          padding: isMobile ? '0 20px' : '0 40px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between'
@@ -83,7 +129,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Star size={14} fill={accent} stroke={accent} />
               <span style={{ 
-                fontSize: 14, 
+                fontSize: 15, 
                 fontWeight: 700, 
                 letterSpacing: '0.01em', 
                 color: '#fff' 
@@ -91,10 +137,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {isMobile ? '★' : 'Reminisce'}
               </span>
             </Link>
+            
+            {!isMobile && (
+              <Link
+                href="/"
+                style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.25)',
+                  textDecoration: 'none',
+                  letterSpacing: '0.08em',
+                  transition: 'color 0.15s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  marginLeft: 0,
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)'}
+              >
+                ↗ Site
+              </Link>
+            )}
 
             {!isMobile && (
               <Link href="/dashboard/templates" style={{ 
                 textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
                 fontSize: 12,
                 fontWeight: 500,
                 letterSpacing: '0.01em',
@@ -105,6 +175,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
               >
                 Templates
+                <span style={{
+                  fontSize: 8,
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: 999,
+                  background: 'rgba(245,158,11,0.1)',
+                  border: '1px solid rgba(245,158,11,0.25)',
+                  color: '#f59e0b',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}>
+                  Beta
+                </span>
               </Link>
             )}
           </div>
@@ -141,13 +224,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6, padding: '5px 10px',
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    gap: 8, padding: '6px 14px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 999,
-                    fontSize: 12, cursor: 'default',
+                    fontSize: 13, cursor: 'default',
                   }}
-                  title={`${wallet.coins} coins (daily: resets at midnight UTC) · ${wallet.gems} gems (premium)`}
+                  title={`${wallet.coins} coins — resets ${resetLabel} · ${wallet.gems} gems (premium)`}
                 >
                   <span style={{
                     display: 'flex',
@@ -157,21 +240,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   }}>
                     🪙 {wallet.coins}
                   </span>
-                  {userPlan === 'pro' && (
-                    <>
-                      <span style={{
-                        color: 'rgba(255,255,255,0.15)',
-                        fontSize: 10,
-                      }}>·</span>
-                      <span style={{
-                        display: 'flex',
-                        alignItems: 'center', gap: 3,
-                        color: '#a78bfa', fontWeight: 600,
-                      }}>
-                        💎 {wallet.gems}
-                      </span>
-                    </>
-                  )}
+                  <>
+                    <span style={{
+                      color: 'rgba(255,255,255,0.15)',
+                      fontSize: 10,
+                    }}>·</span>
+                    <span style={{
+                      display: 'flex',
+                      alignItems: 'center', gap: 3,
+                      color: userPlan === 'pro' ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                      fontWeight: 600,
+                    }}>
+                      💎 {wallet.gems}
+                    </span>
+                  </>
                 </div>
                 {/* Upgrade button for free users */}
                 {userPlan === 'free' && (
@@ -252,7 +334,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         
-        <main style={{ paddingTop: 56, minHeight: '100vh' }}>
+        <main style={{ paddingTop: 68 }}>
           {children}
         </main>
       </div>

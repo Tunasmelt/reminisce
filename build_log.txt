@@ -6,71 +6,12 @@
   - Environments: .env.local
 
    Creating an optimized production build ...
-<w> [webpack.cache.PackFileCacheStrategy] Skipped not serializable cache item 'Compilation/modules|C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\build\webpack\loaders\css-loader\src\index.js??ruleSet[1].rules[14].oneOf[12].use[2]!C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\build\webpack\loaders\postcss-loader\src\index.js??ruleSet[1].rules[14].oneOf[12].use[3]!C:\Users\user\Desktop\Reminisce v2\reminisce\app\globals.css': No serializer registered for PostCSSSyntaxError
-<w> while serializing webpack/lib/cache/PackFileCacheStrategy.PackContentItems -> webpack/lib/NormalModule -> webpack/lib/ModuleBuildError -> PostCSSSyntaxError
+ Γ£ô Compiled successfully
+   Linting and checking validity of types ...
+
 Failed to compile.
 
-./app/globals.css:1:1
-Syntax error: C:\Users\user\Desktop\Reminisce v2\reminisce\app\globals.css The `outline-ring/50` class does not exist. If `outline-ring/50` is a custom class, make sure it is defined within a `@layer` directive.
+./app/api/rewards/daily-login/route.ts
+26:12  Error: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
 
-> 1 | @tailwind base;
-    | ^
-  2 | @tailwind components;
-  3 | @tailwind utilities;
-
-./app/globals.css
-Error: Cannot find module 'tailwindcss-animate'
-Require stack:
-- C:\Users\user\Desktop\Reminisce v2\reminisce\tailwind.config.ts
-    at Module.<anonymous> (node:internal/modules/cjs/loader:1421:15)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\server\require-hook.js:55:36
-    at require.resolve (node:internal/modules/helpers:163:19)
-    at _resolve (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:246378)
-    at jiti (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:249092)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\tailwind.config.ts:76:13
-    at evalModule (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:251913)
-    at jiti (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:249841)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\tailwindcss\lib\lib\load-config.js:53:30
-    at loadConfig (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\tailwindcss\lib\lib\load-config.js:55:6)
-    at tryRunOrWebpackError (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:312989)
-    at __webpack_require_module__ (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:131165)
-    at __nested_webpack_require_153728__ (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:130607)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:131454
-    at symbolIterator (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\neo-async\async.js:1:14444)
-    at done (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\neo-async\async.js:1:14824)
-    at Hook.eval [as callAsync] (eval at create (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:13:28858), <anonymous>:15:1)
-    at Hook.CALL_ASYNC_DELEGATE [as _callAsync] (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:13:26012)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:130328
-    at symbolIterator (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\neo-async\async.js:1:14402)
--- inner error --
-Error: Cannot find module 'tailwindcss-animate'
-Require stack:
-- C:\Users\user\Desktop\Reminisce v2\reminisce\tailwind.config.ts
-    at Module.<anonymous> (node:internal/modules/cjs/loader:1421:15)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\server\require-hook.js:55:36
-    at require.resolve (node:internal/modules/helpers:163:19)
-    at _resolve (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:246378)
-    at jiti (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:249092)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\tailwind.config.ts:76:13
-    at evalModule (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:251913)
-    at jiti (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\jiti\dist\jiti.js:1:249841)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\tailwindcss\lib\lib\load-config.js:53:30
-    at loadConfig (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\tailwindcss\lib\lib\load-config.js:55:6)
-    at Object.<anonymous> (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\build\webpack\loaders\css-loader\src\index.js??ruleSet[1].rules[14].oneOf[12].use[2]!C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\build\webpack\loaders\postcss-loader\src\index.js??ruleSet[1].rules[14].oneOf[12].use[3]!C:\Users\user\Desktop\Reminisce v2\reminisce\app\globals.css:1:7)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:922493
-    at Hook.eval [as call] (eval at create (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:13:28636), <anonymous>:7:1)
-    at Hook.CALL_DELEGATE [as _call] (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:13:25906)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:131198
-    at tryRunOrWebpackError (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:312943)
-    at __webpack_require_module__ (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:131165)
-    at __nested_webpack_require_153728__ (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:130607)
-    at C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\webpack\bundle5.js:28:131454
-    at symbolIterator (C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\compiled\neo-async\async.js:1:14444)
-
-Generated code for C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\build\webpack\loaders\css-loader\src\index.js??ruleSet[1].rules[14].oneOf[12].use[2]!C:\Users\user\Desktop\Reminisce v2\reminisce\node_modules\next\dist\build\webpack\loaders\postcss-loader\src\index.js??ruleSet[1].rules[14].oneOf[12].use[3]!C:\Users\user\Desktop\Reminisce v2\reminisce\app\globals.css
-
-Import trace for requested module:
-./app/globals.css
-
-
-> Build failed because of webpack errors
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules

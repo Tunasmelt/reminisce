@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getServiceSupabase, supabase as clientSupabase } from '@/lib/supabase'
+import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
 import { callAI } from '@/lib/ai-client'
 
 export async function POST(req: Request) {
@@ -16,6 +16,9 @@ export async function POST(req: Request) {
     if (!rawPrompt || !projectId || !provider || !model) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
     }
+
+    if (!await verifyProjectAccess(user.id, projectId))
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const supabase = getServiceSupabase()
 

@@ -392,3 +392,154 @@ input:-webkit-autofill:focus {
   from { transform: translateX(280px); opacity: 0; }
   to   { transform: translateX(0);     opacity: 1; }
 }
+
+/* ── Glass morphism system ───────────────────── */
+
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.glass-accent {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+/* ── Landing page background ─────────────────── */
+
+.landing-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(var(--accent-rgb), 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(var(--accent-rgb), 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 60% at 10% 80%, rgba(var(--accent-rgb), 0.05) 0%, transparent 60%),
+    #070710;
+}
+
+/* ── Glow effects ────────────────────────────── */
+
+.glow-accent {
+  box-shadow:
+    0 0 40px rgba(var(--accent-rgb), 0.15),
+    0 0 80px rgba(var(--accent-rgb), 0.07);
+}
+
+.glow-accent-sm {
+  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.2);
+}
+
+.text-glow {
+  text-shadow: 0 0 40px rgba(var(--accent-rgb), 0.5);
+}
+
+/* ── Gradient text ───────────────────────────── */
+
+.gradient-text {
+  background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.6) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-accent {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, rgba(var(--accent-rgb), 0.6) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Shimmer animation ───────────────────────── */
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.03) 0%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.03) 100%
+  );
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+}
+
+/* ── Float animation ─────────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* ── Stagger fade-in ─────────────────────────── */
+
+@keyframes staggerIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.stagger-1 { animation: staggerIn 0.5s ease both 0.1s; }
+.stagger-2 { animation: staggerIn 0.5s ease both 0.2s; }
+.stagger-3 { animation: staggerIn 0.5s ease both 0.3s; }
+.stagger-4 { animation: staggerIn 0.5s ease both 0.4s; }
+.stagger-5 { animation: staggerIn 0.5s ease both 0.5s; }
+.stagger-6 { animation: staggerIn 0.5s ease both 0.6s; }
+
+/* ── Noise texture overlay ───────────────────── */
+
+.noise::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Horizontal rule with glow ───────────────── */
+
+.hr-glow {
+  border: none;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(var(--accent-rgb), 0.4) 50%,
+    transparent 100%
+  );
+}
+
+/* ── Pricing card highlight ──────────────────── */
+
+.pricing-highlight {
+  background: rgba(var(--accent-rgb), 0.06);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  box-shadow:
+    0 0 0 1px rgba(var(--accent-rgb), 0.1),
+    0 20px 60px rgba(var(--accent-rgb), 0.1),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}

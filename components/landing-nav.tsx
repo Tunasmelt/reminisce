@@ -3,188 +3,256 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Star, Menu, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
+import ReminisceLogo from '@/components/ReminisceLogo'
+import { supabase } from '@/lib/supabase'
+
+function hexToRgba(hex: string, a: number) {
+  if (!hex || hex.length < 7) return `rgba(245,158,11,${a})`
+  const r = parseInt(hex.slice(1,3),16)
+  const g = parseInt(hex.slice(3,5),16)
+  const b = parseInt(hex.slice(5,7),16)
+  return `rgba(${r},${g},${b},${a})`
+}
 
 export default function LandingNav() {
   const { accent } = useTheme()
+  const ac = accent || '#f59e0b'
   const pathname = usePathname()
-  const [scrolled, setScrolled] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [scrolled, setScrolled]   = useState(false)
+  const [progress, setProgress]   = useState(0)
+  const [menuOpen, setMenuOpen]   = useState(false)
+  const [mobile, setMobile]       = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20)
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    
-    handleScroll()
-    checkMobile()
-    
-    window.addEventListener('scroll', handleScroll)
-    window.addEventListener('resize', checkMobile)
-    return () => {
-      window.removeEventListener('scroll', handleScroll)
-      window.removeEventListener('resize', checkMobile)
-    }
+    supabase.auth.getUser().then(({ data }) => {
+      setIsLoggedIn(!!data.user)
+    })
+    // Listen for auth changes (login/logout while page is open)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setIsLoggedIn(!!session)
+    )
+    return () => subscription.unsubscribe()
   }, [])
 
-  const linksList = [
-    { name: 'CAPABILITIES', href: '/capabilities' },
-    { name: 'ENGINEERING', href: '/engineering' },
-    { name: 'DOCS', href: '/docs' }
+  useEffect(() => {
+    const resize = () => setMobile(window.innerWidth < 768)
+    resize()
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
+
+  useEffect(() => {
+    const onScroll = () => {
+      setScrolled(window.scrollY > 20)
+      const doc = document.documentElement
+      setProgress(window.scrollY / (doc.scrollHeight - doc.clientHeight) || 0)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => { setMenuOpen(false) }, [pathname])
+
+  const links = [
+    { name: 'FEATURES',   href: '/capabilities' },
+    { name: 'STRUCTURE',  href: '/engineering'  },
+    { name: 'DOCS',       href: '/docs'         },
   ]
+
+  const isActive = (href: string) => pathname === href
 
   return (
     <>
-      <nav 
-        style={{
-          position: 'fixed',
-          top: 20,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 50,
-          width: isMobile ? 'calc(100% - 24px)' : 'calc(100% - 40px)',
-          maxWidth: 680,
-          margin: '0 auto',
-          background: 'rgba(0,0,0,0.7)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 999,
-          padding: isMobile ? '8px 16px' : '10px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          boxShadow: scrolled ? '0 12px 40px rgba(0,0,0,0.5)' : 'none',
-          transition: 'all 300ms cubic-bezier(0.19, 1, 0.22, 1)'
-        }}
-      >
+      <nav style={{
+        position: 'fixed', top: 16, left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 100,
+        width: 'max-content',
+        maxWidth: mobile ? 'calc(100% - 24px)' : 'calc(100% - 80px)',
+        minWidth: mobile ? undefined : 520,
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: mobile ? 8 : 28,
+        padding: mobile ? '8px 14px' : '10px 20px',
+        background: scrolled ? 'rgba(5,5,16,0.92)' : 'rgba(5,5,16,0.6)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: scrolled
+          ? '1px solid rgba(255,255,255,0.1)'
+          : '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 999,
+        boxShadow: scrolled ? '0 12px 40px rgba(0,0,0,0.45)' : 'none',
+        transition: 'all 0.3s cubic-bezier(0.19,1,0.22,1)',
+      }}>
+
         {/* Logo */}
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-          <Star size={16} fill={accent} stroke={accent} />
-          {!isMobile && (
-            <span style={{ color: '#fff', fontWeight: 800, fontSize: 13, fontStyle: 'italic', letterSpacing: '-0.02em', textTransform: 'uppercase' }}>
+        <Link href="/" style={{
+          display: 'flex', alignItems: 'center',
+          gap: 9, textDecoration: 'none', flexShrink: 0,
+        }}>
+          <ReminisceLogo size={22} color="#ffffff" />
+          {!mobile && (
+            <span style={{
+              color: '#fff', fontWeight: 800, fontSize: 13,
+              letterSpacing: '-0.01em',
+              textTransform: 'uppercase' as const,
+              fontStyle: 'italic',
+            }}>
               Reminisce
             </span>
           )}
         </Link>
-        
-        {/* Links (Desktop) */}
-        {!isMobile && (
-          <div style={{ display: 'flex', gap: 24 }}>
-            {linksList.map(link => {
-              const isActive = pathname === link.href
-              return (
-                <Link 
-                  key={link.href} 
-                  href={link.href} 
-                  style={{ 
-                    fontSize: 11, 
-                    fontWeight: 700, 
-                    letterSpacing: '0.12em', 
-                    textTransform: 'uppercase',
-                    color: isActive ? accent : 'rgba(255,255,255,0.5)', 
-                    textDecoration: 'none',
-                    transition: '150ms',
-                    borderBottom: isActive ? `1px solid ${accent}` : 'none',
-                    padding: '4px 0'
-                  }}
-                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'rgba(255,255,255,0.9)' }}
-                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'rgba(255,255,255,0.5)' }}
-                >
-                  {link.name}
-                </Link>
-              )
-            })}
+
+        {/* Desktop links */}
+        {!mobile && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            {links.map(({ name, href }) => (
+              <Link key={href} href={href} style={{
+                padding: '5px 13px', borderRadius: 999,
+                fontSize: 11, fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase' as const,
+                color: isActive(href) ? ac : 'rgba(255,255,255,0.48)',
+                textDecoration: 'none',
+                background: isActive(href) ? hexToRgba(ac, 0.1) : 'transparent',
+                border: isActive(href)
+                  ? `1px solid ${hexToRgba(ac, 0.25)}`
+                  : '1px solid transparent',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => {
+                if (!isActive(href))
+                  (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.88)'
+              }}
+              onMouseLeave={e => {
+                if (!isActive(href))
+                  (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.48)'
+              }}
+              >
+                {name}
+              </Link>
+            ))}
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
-          {/* Button */}
-          <Link 
-            href="/dashboard"
-            style={{
-              background: accent,
-              color: '#000',
-              borderRadius: 999,
-              padding: isMobile ? '7px 14px' : '8px 20px',
-              fontSize: isMobile ? 10 : 12,
-              fontWeight: 800,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
+        {/* CTA group */}
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          gap: 8, flexShrink: 0,
+        }}>
+          {!mobile && !isLoggedIn && (
+            <Link href="/login" style={{
+              fontSize: 11, fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase' as const,
+              color: 'rgba(255,255,255,0.4)',
               textDecoration: 'none',
-              transition: 'all 200ms cubic-bezier(0.19, 1, 0.22, 1)'
+              padding: '5px 12px',
+              transition: 'color 0.15s',
             }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#fff'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.4)'}
+            >
+              Sign in
+            </Link>
+          )}
+
+          <Link href="/dashboard" style={{
+            background: ac,
+            color: '#000',
+            borderRadius: 999,
+            padding: mobile ? '7px 13px' : '8px 18px',
+            fontSize: mobile ? 10 : 11,
+            fontWeight: 800,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase' as const,
+            textDecoration: 'none',
+            boxShadow: `0 0 20px ${hexToRgba(ac, 0.35)}`,
+            transition: 'opacity 0.15s',
+            whiteSpace: 'nowrap' as const,
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.84'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
           >
-            {isMobile ? 'LAUNCH' : 'Launch Workspace →'}
+            {mobile ? 'Launch' : 'Launch Workspace →'}
           </Link>
 
-          {isMobile && (
-            <button 
-              onClick={() => setMenuOpen(!menuOpen)}
+          {mobile && (
+            <button
+              onClick={() => setMenuOpen(v => !v)}
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#fff',
-                cursor: 'pointer',
-                padding: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10, width: 34, height: 34,
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer', color: '#fff',
               }}
             >
-              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+              {menuOpen ? <X size={15}/> : <Menu size={15}/>}
             </button>
           )}
         </div>
       </nav>
 
-      {/* Mobile Menu */}
-      {isMobile && menuOpen && (
+      {/* Scroll progress bar — only visible once user starts scrolling */}
+      {progress > 0 && (
         <div style={{
-          position: 'fixed',
-          top: 74,
-          left: 12,
-          right: 12,
-          background: 'rgba(0,0,0,0.95)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 16,
-          padding: 20,
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          zIndex: 49,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-          animation: 'pageEnter 0.2s ease-out both'
-        }}>
-          {linksList.map(link => {
-            const isActive = pathname === link.href
-            return (
-              <Link 
-                key={link.href}
-                href={link.href}
-                onClick={() => setMenuOpen(false)}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 8,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  color: isActive ? accent : 'rgba(255,255,255,0.6)',
-                  textDecoration: 'none',
-                  background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                {link.name}
-              </Link>
-            )
-          })}
-        </div>
+          position: 'fixed', top: 0, left: 0,
+          height: 2, zIndex: 101,
+          width: `${Math.min(progress, 1) * 100}%`,
+          background: `linear-gradient(to right, ${hexToRgba(ac, 0.7)}, ${ac})`,
+          transition: 'width 0.1s linear',
+          pointerEvents: 'none',
+        }}/>
       )}
+
+      {/* Mobile drawer */}
+      <div style={{
+        position: 'fixed', top: 72, left: 12, right: 12,
+        zIndex: 99,
+        background: 'rgba(5,5,16,0.97)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: menuOpen ? '1px solid rgba(255,255,255,0.09)' : '1px solid transparent',
+        borderRadius: 20,
+        padding: menuOpen ? '20px 20px 24px' : '0 20px',
+        maxHeight: menuOpen ? 320 : 0,
+        overflow: 'hidden',
+        transition: 'max-height 0.3s cubic-bezier(0.19,1,0.22,1), padding 0.3s ease, border-color 0.3s ease',
+        pointerEvents: menuOpen ? 'auto' : 'none',
+      }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {links.map(({ name, href }) => (
+            <Link key={href} href={href} style={{
+              padding: '12px 16px', borderRadius: 12,
+              fontSize: 14, fontWeight: isActive(href) ? 700 : 400,
+              color: isActive(href) ? '#fff' : 'rgba(255,255,255,0.55)',
+              textDecoration: 'none',
+              background: isActive(href) ? hexToRgba(ac, 0.1) : 'transparent',
+              border: isActive(href)
+                ? `1px solid ${hexToRgba(ac, 0.2)}`
+                : '1px solid transparent',
+            }}>
+              {name}
+            </Link>
+          ))}
+          {!isLoggedIn && (
+            <Link href="/login" style={{
+              padding: '12px 16px', borderRadius: 12,
+              fontSize: 14, color: 'rgba(255,255,255,0.5)',
+              textDecoration: 'none',
+            }}>
+              Sign in
+            </Link>
+          )}
+        </div>
+      </div>
     </>
   )
 }

@@ -34,3 +34,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Dev artifacts — never commit
+test.json
+test-export.js
+test-export.zip
+
+# Local environment — already covered by .env*.local but being explicit
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+

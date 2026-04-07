@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { 
-  Trash2, 
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { toast } from 'sonner'
@@ -12,6 +13,7 @@ import { ThemeSwitcher } from '@/components/theme-switcher'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 function hexToRgba(hex: string, a: number) {
+  if (!hex || hex.length < 7) return `rgba(255,255,255,${a})`
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
@@ -19,10 +21,14 @@ function hexToRgba(hex: string, a: number) {
 }
 
 interface Project {
-  id: string
-  name: string
-  type: string
-  cluster: string
+  id:                 string
+  name:               string
+  type:               string
+  cluster:            string
+  repo_url:           string | null
+  editor_preference:  string
+  git_branch:         string | null
+  git_last_commit:    string | null
 }
 
 const PROVIDERS = [
@@ -47,8 +53,11 @@ export default function SettingsPage() {
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([])
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
   const [userPlan, setUserPlan] = useState<'free' | 'pro'>('free')
-  
+
   const [isMobile, setIsMobile] = useState(false)
+  const [showDeleteConfirm,  setShowDeleteConfirm]  = useState(false)
+  const [isDeletingProject,  setIsDeletingProject]  = useState(false)
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
@@ -66,6 +75,8 @@ export default function SettingsPage() {
       if (data.providers) setConfiguredProviders(data.providers)
     } catch { }
   }, [])
+
+
 
   useEffect(() => {
     const init = async () => {
@@ -133,14 +144,18 @@ export default function SettingsPage() {
     }
   }
 
+
+
   const handleUpdateProject = async () => {
     if (!project) return
     try {
       const { error } = await supabase.from('projects')
-        .update({ 
-          name: project.name, 
-          type: project.type, 
-          cluster: project.cluster 
+        .update({
+          name:              project.name,
+          type:              project.type,
+          cluster:           project.cluster,
+          repo_url:          project.repo_url ?? null,
+          editor_preference: project.editor_preference ?? 'generic',
         })
         .eq('id', projectId)
       if (error) throw error
@@ -151,15 +166,16 @@ export default function SettingsPage() {
   }
 
   const handleDeleteProject = async () => {
-    const confirm = window.confirm('RE-INITIALIZE PERMANENT PURGE? All domain metadata will be lost.')
-    if (!confirm) return
+    setIsDeletingProject(true)
     try {
       const { error } = await supabase.from('projects').delete().eq('id', projectId)
       if (error) throw error
-      toast.success('Mission Purged')
+      toast.success('Project deleted')
       router.push('/dashboard')
     } catch {
-      toast.error('Purge failed')
+      toast.error('Delete failed')
+      setIsDeletingProject(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -168,24 +184,25 @@ export default function SettingsPage() {
     router.push('/login')
   }
 
-  if (loading) return <div style={{ padding: 48, background: '#000', color: '#fff' }} className="page-enter">Calibrating Settings...</div>
+  if (loading) return <div style={{ padding: 48, background: '#07070f', color: '#fff' }} className="page-enter">Calibrating Settings...</div>
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '32px 20px' : '48px 32px' }} className="page-enter">
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: isMobile ? '32px 20px' : '40px 32px 80px' }} className="page-enter">
       <title>{`Settings — ${project?.name}`}</title>
-           <div style={{ marginBottom: 48 }}>
+      
+      <div style={{ marginBottom: 48 }}>
         <div style={{
-          fontSize: 9, fontWeight: 700,
-          letterSpacing: '0.15em',
+          fontSize: 9, fontWeight: 800,
+          letterSpacing: '0.18em',
           textTransform: 'uppercase',
-          color: accent, marginBottom: 6,
+          color: accent, marginBottom: 8,
         }}>
           Project Configuration
         </div>
         <h1 style={{
-          fontSize: 28, fontWeight: 800,
-          color: '#fff', letterSpacing: '-0.01em',
-          marginBottom: 6,
+          fontSize: 32, fontWeight: 900,
+          color: '#fff', letterSpacing: '-0.03em',
+          marginBottom: 8, lineHeight: 1,
         }}>
           Settings
         </h1>
@@ -195,16 +212,26 @@ export default function SettingsPage() {
       </div>
 
       {/* TAB NAVIGATION */}
-      <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 40, display: 'flex', gap: 0, overflowX: 'auto' }} className="hide-scrollbar">
+      <div style={{
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        marginBottom: 36,
+        display: 'flex', gap: 0,
+        overflowX: 'auto',
+        background: 'rgba(255,255,255,0.02)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        borderRadius: '10px 10px 0 0',
+        padding: '0 4px',
+      }} className="hide-scrollbar">
         {['Workspace', 'Models', 'Aesthetics', 'Advanced'].map(t => (
           <button
             key={t}
             onClick={() => setActiveTab(t.toLowerCase())}
             style={{
-              padding: '10px 20px',
+              padding: '12px 20px',
               fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: '0.03em',
+              fontWeight: 600,
+              letterSpacing: '0.05em',
               textTransform: 'none',
               border: 'none',
               background: 'transparent',
@@ -252,177 +279,88 @@ export default function SettingsPage() {
             </div>
 
             {userPlan !== 'pro' ? (
-              /* ── LOCKED STATE for free users ── */
               <div style={{
-                border: `1px solid ${hexToRgba(accent, 0.2)}`,
-                borderRadius: 12,
+                border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                borderRadius: 16,
                 padding: '32px 28px',
-                background: hexToRgba(accent, 0.04),
+                background: hexToRgba(accent, 0.05),
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                boxShadow: `0 0 40px ${hexToRgba(accent, 0.06)}`,
                 textAlign: 'center',
               }}>
-                <div style={{ fontSize: 32, marginBottom: 14 }}>
-                  🔒
-                </div>
-                <div style={{
-                  fontSize: 16, fontWeight: 700,
-                  color: '#fff', marginBottom: 8,
-                }}>
-                  BYOK is a Pro feature
-                </div>
-                <div style={{
-                  fontSize: 13,
-                  color: 'rgba(255,255,255,0.4)',
+                <div style={{ fontSize: 32, marginBottom: 14 }}>🔒</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 8 }}>BYOK is a Pro feature</div>
+                <p style={{
+                  fontSize: 13, color: 'rgba(255,255,255,0.4)',
                   lineHeight: 1.65, marginBottom: 24,
                   maxWidth: 380, margin: '0 auto 24px',
                 }}>
-                  Bring Your Own Key (BYOK) lets you use 
-                  your personal API keys for Anthropic, 
-                  OpenRouter, Mistral, and more — bypassing 
-                  the gem economy entirely. Available on Pro.
-                </div>
-                <div style={{
-                  display: 'flex', gap: 8,
-                  justifyContent: 'center',
-                  flexWrap: 'wrap',
-                }}>
-                  {['Anthropic', 'OpenRouter', 'Mistral', 
-                    'Google AI', 'MiniMax'].map(p => (
-                    <span key={p} style={{
-                      fontSize: 10, fontWeight: 600,
-                      padding: '4px 12px',
-                      borderRadius: 999,
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      color: 'rgba(255,255,255,0.35)',
-                    }}>
-                      {p}
-                    </span>
-                  ))}
-                </div>
+                  Bring Your Own Key (BYOK) lets you use your personal API keys for Anthropic, 
+                  OpenRouter, Mistral, and more — bypassing the gem economy entirely. Available on Pro.
+                </p>
                 <button
-                  onClick={() => 
-                    window.location.href = '/upgrade'
-                  }
+                  onClick={() => window.location.href = '/upgrade'}
                   style={{
-                    marginTop: 24,
-                    display: 'inline-flex',
-                    alignItems: 'center', gap: 6,
-                    padding: '10px 24px',
-                    background: accent, color: '#000',
-                    border: 'none', borderRadius: 999,
-                    fontSize: 12, fontWeight: 800,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                    cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '10px 24px', background: accent, color: '#000',
+                    border: 'none', borderRadius: 999, fontSize: 12, fontWeight: 800,
+                    letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
                   }}
                 >
                   Upgrade to Pro →
                 </button>
               </div>
             ) : (
-              /* ── UNLOCKED STATE for pro users ── */
               <div>
                 <div style={{
-                  display: 'flex',
-                  alignItems: 'center', gap: 8,
-                  marginBottom: 20, padding: '10px 14px',
-                  background: 'rgba(16,185,129,0.06)',
-                  border: '1px solid rgba(16,185,129,0.2)',
-                  borderRadius: 8,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  marginBottom: 20, padding: '11px 16px',
+                  background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)',
+                  borderRadius: 10,
                 }}>
                   <span style={{ color: '#10b981' }}>✓</span>
-                  <span style={{
-                    fontSize: 12,
-                    color: 'rgba(255,255,255,0.5)',
-                  }}>
-                    <strong style={{ color: '#10b981' }}>
-                      Pro — BYOK active.
-                    </strong>
-                    {' '}Your own keys bypass the gem economy 
-                    and have no usage limits from Reminisce.
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                    <strong style={{ color: '#10b981' }}>Pro — BYOK active.</strong>
+                    {' '}Your own keys bypass the gem economy and have no usage limits.
                   </span>
                 </div>
                 {PROVIDERS.map(p => {
-                  const isConfigured = 
-                    configuredProviders.includes(p.id)
+                  const isConfigured = configuredProviders.includes(p.id)
                   return (
                     <div
                       key={p.id}
                       style={{
                         padding: '16px 18px',
-                        background: isConfigured
-                          ? 'rgba(16,185,129,0.04)'
-                          : 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${isConfigured
-                          ? 'rgba(16,185,129,0.2)'
-                          : 'rgba(255,255,255,0.07)'}`,
-                        borderRadius: 10,
-                        marginBottom: 8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
+                        background: isConfigured ? 'rgba(16,185,129,0.04)' : 'rgba(255,255,255,0.02)',
+                        border: `1px solid ${isConfigured ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.07)'}`,
+                        borderRadius: 12, marginBottom: 8,
+                        display: 'flex', alignItems: 'center', gap: 12,
                       }}
                     >
                       <div style={{ flex: 1 }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center', gap: 8,
-                          marginBottom: 8,
-                        }}>
-                          <span style={{
-                            fontSize: 13, fontWeight: 600,
-                            color: '#fff',
-                          }}>
-                            {p.name}
-                          </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{p.name}</span>
                           {isConfigured && (
                             <span style={{
-                              fontSize: 9, fontWeight: 700,
-                              padding: '2px 7px',
-                              borderRadius: 999,
-                              background: 'rgba(16,185,129,0.1)',
-                              border: '1px solid rgba(16,185,129,0.25)',
-                              color: '#10b981',
-                              letterSpacing: '0.06em',
-                              textTransform: 'uppercase',
-                            }}>
-                              Configured
-                            </span>
+                              fontSize: 9, fontWeight: 700, padding: '2px 7px',
+                              borderRadius: 999, background: 'rgba(16,185,129,0.1)',
+                              border: '1px solid rgba(16,185,129,0.25)', color: '#10b981',
+                              letterSpacing: '0.06em', textTransform: 'uppercase',
+                            }}>Configured</span>
                           )}
                         </div>
-                        <div style={{
-                          display: 'flex', gap: 8,
-                        }}>
+                        <div style={{ display: 'flex', gap: 8 }}>
                           <input
                             type="password"
-                            placeholder={isConfigured
-                              ? '••••••••••••••••'
-                              : p.placeholder}
+                            placeholder={isConfigured ? '••••••••••••••••' : p.placeholder}
                             value={keyInputs[p.id] || ''}
-                            onChange={e => setKeyInputs(
-                              prev => ({
-                                ...prev,
-                                [p.id]: e.target.value
-                              })
-                            )}
+                            onChange={e => setKeyInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
                             style={{
-                              flex: 1,
-                              background: 'rgba(255,255,255,0.04)',
-                              border: '1px solid rgba(255,255,255,0.1)',
-                              borderRadius: 8,
-                              padding: '8px 12px',
-                              fontSize: 12,
-                              color: '#fff',
-                              fontFamily: 'monospace',
-                              outline: 'none',
-                            }}
-                            onFocus={e => {
-                              e.currentTarget.style.borderColor
-                                = accent
-                            }}
-                            onBlur={e => {
-                              e.currentTarget.style.borderColor
-                                = 'rgba(255,255,255,0.1)'
+                              flex: 1, background: 'rgba(255,255,255,0.04)',
+                              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+                              padding: '8px 12px', fontSize: 12, color: '#fff',
+                              fontFamily: 'monospace', outline: 'none',
                             }}
                           />
                           <button
@@ -430,20 +368,11 @@ export default function SettingsPage() {
                             disabled={!keyInputs[p.id]}
                             style={{
                               padding: '8px 16px',
-                              background: keyInputs[p.id]
-                                ? accent : 'transparent',
-                              color: keyInputs[p.id]
-                                ? '#000'
-                                : 'rgba(255,255,255,0.25)',
-                              border: `1px solid ${keyInputs[p.id]
-                                ? 'transparent'
-                                : 'rgba(255,255,255,0.1)'}`,
-                              borderRadius: 8,
-                              fontSize: 11, fontWeight: 700,
-                              cursor: keyInputs[p.id]
-                                ? 'pointer' : 'not-allowed',
-                              transition: 'all 0.15s',
-                              flexShrink: 0,
+                              background: keyInputs[p.id] ? accent : 'transparent',
+                              color: keyInputs[p.id] ? '#000' : 'rgba(255,255,255,0.25)',
+                              border: `1px solid ${keyInputs[p.id] ? 'transparent' : 'rgba(255,255,255,0.1)'}`,
+                              borderRadius: 8, fontSize: 11, fontWeight: 700,
+                              cursor: keyInputs[p.id] ? 'pointer' : 'not-allowed',
                             }}
                           >
                             Save
@@ -452,29 +381,12 @@ export default function SettingsPage() {
                             <button
                               onClick={() => deleteKey(p.id)}
                               style={{
-                                padding: '8px 12px',
-                                background: 'transparent',
-                                border: '1px solid rgba(239,68,68,0.2)',
-                                borderRadius: 8,
-                                color: 'rgba(239,68,68,0.6)',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                                transition: 'all 0.15s',
-                                display: 'flex',
-                                alignItems: 'center',
+                                padding: '8px 12px', background: 'transparent',
+                                border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8,
+                                color: 'rgba(239,68,68,0.6)', cursor: 'pointer',
                               }}
-                              onMouseEnter={e => {
-                                e.currentTarget.style.borderColor
-                                  = '#ef4444'
-                                e.currentTarget.style.color
-                                  = '#ef4444'
-                              }}
-                              onMouseLeave={e => {
-                                e.currentTarget.style.borderColor
-                                  = 'rgba(239,68,68,0.2)'
-                                e.currentTarget.style.color
-                                  = 'rgba(239,68,68,0.6)'
-                              }}
+                              onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = '#ef4444' }}
+                              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(239,68,68,0.6)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)' }}
                             >
                               <Trash2 size={13} />
                             </button>
@@ -496,137 +408,153 @@ export default function SettingsPage() {
             </h3>
 
             <div style={{ marginBottom: 24 }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.35)',
-                marginBottom: 6,
-              }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>
                 Project Name
               </div>
               <input 
                 type="text" 
                 value={project.name}
                 onChange={(e) => setProject({ ...project, name: e.target.value })}
-                onFocus={e => {
-                  e.currentTarget.style.borderColor = accent
-                  e.currentTarget.style.boxShadow = `0 0 0 3px ${hexToRgba(accent, 0.1)}`
+                style={{
+                  width: '100%', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10,
+                  padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none',
                 }}
-                onBlur={e => {
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                  e.currentTarget.style.boxShadow = 'none'
-                }}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none', transition: 'all 0.2s' }}
               />
             </div>
 
             <div style={{ marginBottom: 24 }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.35)',
-                marginBottom: 6,
-              }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>
                 Project Type
               </div>
               <input 
                 type="text" 
                 value={project.type}
                 onChange={(e) => setProject({ ...project, type: e.target.value })}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none' }}
+                style={{
+                  width: '100%', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10,
+                  padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none',
+                }}
               />
             </div>
 
+            {/* Repository URL */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{
-                fontSize: 9, fontWeight: 700,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.35)',
-                marginBottom: 6,
-              }}>
-                Cluster Assignment
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>
+                Repository URL <span style={{ color: 'rgba(255,255,255,0.2)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
               </div>
-              <input 
-                type="text" 
-                value={project.cluster}
-                onChange={(e) => setProject({ ...project, cluster: e.target.value })}
-                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none' }}
+              <input
+                type="url"
+                placeholder="https://github.com/username/repo"
+                value={project.repo_url ?? ''}
+                onChange={(e) => setProject({ ...project, repo_url: e.target.value || null })}
+                style={{
+                  width: '100%', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10,
+                  padding: '12px 16px', fontSize: 13, color: '#fff', outline: 'none',
+                  fontFamily: 'monospace',
+                }}
               />
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 6, lineHeight: 1.5 }}>
+                Used to enrich blueprint generation with real repo context.
+                Public repos only — no auth required.
+              </div>
             </div>
 
-            <button 
+            {/* Editor / AI coding tool preference */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>
+                AI Coding Editor
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { value: 'cursor',     label: 'Cursor',         file: '.cursorrules' },
+                  { value: 'claude-code',label: 'Claude Code',    file: 'CLAUDE.md' },
+                  { value: 'copilot',    label: 'Copilot',        file: 'copilot-instructions.md' },
+                  { value: 'windsurf',   label: 'Windsurf',       file: '.windsurfrules' },
+                  { value: 'generic',    label: 'Other / None',   file: 'reminisce-context.md' },
+                ].map(opt => {
+                  const isActive = (project.editor_preference ?? 'generic') === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setProject({ ...project, editor_preference: opt.value })}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: 8,
+                        border: `1px solid ${isActive ? hexToRgba(accent, 0.5) : 'rgba(255,255,255,0.1)'}`,
+                        background: isActive ? hexToRgba(accent, 0.1) : 'transparent',
+                        color: isActive ? accent : 'rgba(255,255,255,0.4)',
+                        fontSize: 12, fontWeight: isActive ? 700 : 400,
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                    >
+                      {opt.label}
+                      <span style={{ display: 'block', fontSize: 9, color: isActive ? hexToRgba(accent, 0.7) : 'rgba(255,255,255,0.2)', marginTop: 2 }}>
+                        {opt.file}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 8, lineHeight: 1.5 }}>
+                Reminisce generates a context file for your editor after blueprint generation.
+                The file is injected into every coding session automatically.
+              </div>
+            </div>
+
+            {/* Git state — read-only, populated by local folder sync */}
+            {(project.git_branch || project.git_last_commit) && (
+              <div style={{ marginBottom: 24, padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 8 }}>
+                  Git State (synced from local)
+                </div>
+                {project.git_branch && (
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
+                    <span style={{ color: 'rgba(255,255,255,0.25)' }}>Branch: </span>
+                    <code style={{ color: accent, fontFamily: 'monospace' }}>{project.git_branch}</code>
+                  </div>
+                )}
+                {project.git_last_commit && (
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.25)' }}>Last commit: </span>
+                    <span>{project.git_last_commit}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
               onClick={handleUpdateProject}
               style={{
                 background: accent, color: '#000', border: 'none', borderRadius: 999,
-                padding: '12px 32px', fontSize: 11, fontWeight: 800, 
+                padding: '12px 32px', fontSize: 11, fontWeight: 800,
+                boxShadow: `0 0 20px ${hexToRgba(accent, 0.35)}`,
                 textTransform: 'uppercase', cursor: 'pointer', marginTop: 12,
-                transition: 'all 200ms cubic-bezier(0.19, 1, 0.22, 1)'
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'scale(1.02)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)' }}
             >
               SAVE CHANGES
             </button>
 
             <div style={{
-              marginTop: 32,
-              border: '1px solid rgba(239,68,68,0.25)',
-              borderRadius: 12, padding: '20px 24px',
-              background: 'rgba(239,68,68,0.04)',
+              marginTop: 32, border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: 16, padding: '22px 24px', background: 'rgba(239,68,68,0.04)',
             }}>
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                gap: 8, marginBottom: 8,
-              }}>
-                <span style={{
-                  color: '#ef4444', fontSize: 16,
-                }}>⚠</span>
-                <span style={{
-                  fontSize: 13, fontWeight: 700,
-                  color: '#ef4444',
-                }}>
-                  Danger Zone
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ color: '#ef4444', fontSize: 16 }}>⚠</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#ef4444' }}>Danger Zone</span>
               </div>
-              <p style={{
-                fontSize: 13,
-                color: 'rgba(255,255,255,0.4)',
-                lineHeight: 1.6, marginBottom: 16,
-              }}>
-                Deleting this project will permanently 
-                purge all archived metadata, feature 
-                specs, and context engine versions. 
-                This action is irreversible and cannot 
-                be undone.
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6, marginBottom: 16 }}>
+                Deleting this project will permanently purge all archived metadata. This action is irreversible.
               </p>
               <button
-                onClick={() => {
-                  if (confirm('Delete this project? This cannot be undone.')) {
-                    handleDeleteProject()
-                  }
-                }}
+                onClick={() => setShowDeleteConfirm(true)}
                 style={{
-                  padding: '8px 20px',
-                  border: '1px solid #ef4444',
-                  borderRadius: 8,
-                  background: 'transparent',
-                  color: '#ef4444',
-                  fontSize: 11, fontWeight: 800,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background =
-                    'rgba(239,68,68,0.1)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background =
-                    'transparent'
+                  padding: '8px 20px', border: '1px solid #ef4444',
+                  borderRadius: 8, background: 'transparent', color: '#ef4444',
+                  fontSize: 11, fontWeight: 800, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', cursor: 'pointer',
                 }}
               >
                 Delete Project
@@ -635,29 +563,21 @@ export default function SettingsPage() {
           </div>
         )}
 
+
         {activeTab === 'advanced' && user && (
           <div className="page-enter">
             <h3 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.03em', textTransform: 'none', color: 'rgba(255,255,255,0.35)', marginBottom: 24 }}>
               Advanced
             </h3>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '14px 0', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '14px 4px', gap: 16 }}>
               <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>EMAIL</span>
               <span style={{ fontSize: isMobile ? 12 : 13, color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace', wordBreak: 'break-all', textAlign: 'right' }}>{user.email}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '14px 0', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '14px 4px', gap: 16 }}>
               <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>USER ID</span>
               <span style={{ fontSize: isMobile ? 12 : 13, color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace', wordBreak: 'break-all', textAlign: 'right' }}>{user.id.slice(0, 16)}...</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '14px 0' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>PLAN</span>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Elite Access</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '14px 0' }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>MEMBER SINCE</span>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>{new Date(user.created_at).toLocaleDateString()}</span>
-            </div>
-
             <button 
               onClick={handleSignOut}
               style={{
@@ -674,6 +594,91 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* ── Delete project confirm modal ── */}
+      {showDeleteConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'center', padding: 24,
+        }}>
+          <div style={{
+            background: 'rgba(14,14,28,0.98)',
+            border: '1px solid rgba(239,68,68,0.35)',
+            borderRadius: 18, padding: '28px 32px',
+            maxWidth: 440, width: '100%',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              marginBottom: 16,
+            }}>
+              <AlertTriangle size={18} color="#ef4444"/>
+              <div style={{
+                fontSize: 17, fontWeight: 800, color: '#fff',
+              }}>
+                Delete project permanently?
+              </div>
+            </div>
+            <p style={{
+              fontSize: 13, color: 'rgba(255,255,255,0.5)',
+              lineHeight: 1.65, marginBottom: 10,
+            }}>
+              This will permanently delete{' '}
+              <strong style={{ color: '#fff' }}>
+                {project?.name ?? 'this project'}
+              </strong>{' '}
+              including all phases, features, prompts, and context files.
+            </p>
+            <div style={{
+              fontSize: 12, color: '#f87171',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: 8, padding: '8px 12px',
+              marginBottom: 24,
+            }}>
+              ⚠ This action is irreversible.
+            </div>
+            <div style={{
+              display: 'flex', gap: 12, justifyContent: 'flex-end',
+            }}>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeletingProject}
+                style={{
+                  padding: '9px 20px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 10, cursor: 'pointer',
+                  fontSize: 13, fontWeight: 600,
+                  color: 'rgba(255,255,255,0.6)',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProject}
+                disabled={isDeletingProject}
+                style={{
+                  padding: '9px 20px',
+                  background: '#ef4444',
+                  border: 'none', borderRadius: 10,
+                  cursor: 'pointer',
+                  fontSize: 13, fontWeight: 700, color: '#fff',
+                  opacity: isDeletingProject ? 0.6 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+              >
+                {isDeletingProject ? 'Deleting...' : 'Delete project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

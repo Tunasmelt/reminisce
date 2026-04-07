@@ -11,3 +11,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export const getServiceSupabase = () => {
   return createClient(supabaseUrl, supabaseServiceRoleKey)
 }
+
+/**
+ * Verifies that userId owns the project (via workspace ownership).
+ * Use in any API route that calls getServiceSupabase() and accepts projectId.
+ * Returns true if the user owns the project, false otherwise.
+ */
+export async function verifyProjectAccess(
+  userId: string,
+  projectId: string,
+): Promise<boolean> {
+  const supabase = getServiceSupabase()
+  const { data } = await supabase
+    .from('projects')
+    .select('id, workspaces!inner(owner_id)')
+    .eq('id', projectId)
+    .single()
+  if (!data) return false
+  return (data.workspaces as unknown as { owner_id: string }).owner_id === userId
+}
+

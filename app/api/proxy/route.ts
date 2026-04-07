@@ -16,6 +16,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing URL or Method' }, { status: 400 })
     }
 
+    // ── SSRF protection ─────────────────────────────────────────────────────
+    // Block private/internal network addresses and non-HTTPS schemes
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(url)
+    } catch {
+      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return NextResponse.json({ error: 'Only HTTP/HTTPS URLs are allowed' }, { status: 400 })
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase()
+    const blockedPatterns = [
+      /^localhost$/,
+      /^127\./,
+      /^10\./,
+      /^172\.(1[6-9]|2\d|3[01])\./,
+      /^192\.168\./,
+      /^169\.254\./,  // AWS metadata service
+      /^::1$/,
+      /^0\.0\.0\.0$/,
+      /\.internal$/,
+      /\.local$/,
+    ]
+    if (blockedPatterns.some(p => p.test(hostname))) {
+      return NextResponse.json({ error: 'Private/internal URLs are not allowed' }, { status: 400 })
+    }
+
     const fetchHeaders: Record<string, string> = { ...headers }
 
     if (authType === 'Bearer Token' && authValue) {

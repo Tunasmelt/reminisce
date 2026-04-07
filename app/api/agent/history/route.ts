@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getServiceSupabase, supabase as clientSupabase } from '@/lib/supabase'
+import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
 
 export async function GET(req: Request) {
   try {
@@ -16,6 +16,9 @@ export async function GET(req: Request) {
     if (!projectId) {
       return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
     }
+
+    if (!await verifyProjectAccess(user.id, projectId))
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const supabase = getServiceSupabase()
 

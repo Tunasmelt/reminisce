@@ -9,30 +9,73 @@ export const MODEL_COSTS: Record<string, {
   amount: number
   tier: 'free' | 'pro'
 }> = {
-  // Free tier — OpenRouter free models (coins)
-  'meta-llama/llama-3.3-70b-instruct:free':
-    { currency: 'coins', amount: 1, tier: 'free' },
-  'google/gemini-2.0-flash-exp:free':
-    { currency: 'coins', amount: 1, tier: 'free' },
-  'mistralai/mistral-7b-instruct:free':
-    { currency: 'coins', amount: 1, tier: 'free' },
-  'mistralai/mistral-small-3.1-24b-instruct:free':
-    { currency: 'coins', amount: 1, tier: 'free' },
-  'nvidia/llama-3.1-nemotron-super-49b-v1:free':
-    { currency: 'coins', amount: 1, tier: 'free' },
-  'nvidia/llama-nemotron-nano-8b-instruct:free':
-    { currency: 'coins', amount: 1, tier: 'free' },
-  // Pro tier — direct API models (gems)
-  'mistral-small-latest':
-    { currency: 'gems', amount: 1, tier: 'pro' },
-  'mistral-large-latest':
-    { currency: 'gems', amount: 2, tier: 'pro' },
-  'gemini-2.0-flash':
-    { currency: 'gems', amount: 1, tier: 'pro' },
-  'claude-sonnet-4-20250514':
-    { currency: 'gems', amount: 3, tier: 'pro' },
-  'gpt-4o':
-    { currency: 'gems', amount: 3, tier: 'pro' },
+  // ── FREE TIER — provider absorbs cost, coins deducted ─────────────────
+
+  // Groq
+  'llama-3.1-8b-instant':                        { currency: 'coins', amount: 1, tier: 'free' },
+  'llama-3.3-70b-versatile':                      { currency: 'coins', amount: 2, tier: 'free' },
+  'meta-llama/llama-4-scout-17b-16e-instruct':   { currency: 'coins', amount: 2, tier: 'free' },
+  'moonshotai/kimi-k2-instruct-0905':             { currency: 'coins', amount: 2, tier: 'free' },
+  'qwen/qwen3-32b':                               { currency: 'coins', amount: 2, tier: 'free' },
+
+  // Cerebras
+  'llama3.1-8b':                                  { currency: 'coins', amount: 1, tier: 'free' },
+  'llama-3.3-70b':                                { currency: 'coins', amount: 2, tier: 'free' },
+  'llama-4-scout-17b-16e-instruct':               { currency: 'coins', amount: 2, tier: 'free' },
+  'qwen-3-32b':                                   { currency: 'coins', amount: 2, tier: 'free' },
+
+  // SambaNova
+  'Meta-Llama-3.1-8B-Instruct':                  { currency: 'coins', amount: 1, tier: 'free' },
+  'Meta-Llama-3.1-70B-Instruct':                 { currency: 'coins', amount: 2, tier: 'free' },
+  'Meta-Llama-3.1-405B-Instruct':                { currency: 'coins', amount: 3, tier: 'free' },
+  'Meta-Llama-3.3-70B-Instruct':                 { currency: 'coins', amount: 2, tier: 'free' },
+  'Qwen2.5-72B-Instruct':                        { currency: 'coins', amount: 2, tier: 'free' },
+
+  // Gemini free
+  'gemini-2.5-flash-lite':                       { currency: 'coins', amount: 1, tier: 'free' },
+
+  // Mistral Experiment plan
+  'open-mistral-7b':                             { currency: 'coins', amount: 1, tier: 'free' },
+  'mistral-small-latest':                        { currency: 'coins', amount: 2, tier: 'free' },
+  'codestral-latest':                            { currency: 'coins', amount: 2, tier: 'free' },
+
+  // Kimi (Moonshot) — updated to current model IDs
+  'kimi-k2.5':                                   { currency: 'coins', amount: 2, tier: 'free' },
+  // Legacy Kimi model IDs kept for backward compat with existing sessions
+  'moonshot-v1-8k':                              { currency: 'coins', amount: 1, tier: 'free' },
+  'moonshot-v1-32k':                             { currency: 'coins', amount: 2, tier: 'free' },
+  'moonshot-v1-128k':                            { currency: 'coins', amount: 3, tier: 'free' },
+
+  // OpenRouter free models (kept as fallback)
+  'meta-llama/llama-3.3-70b-instruct:free':      { currency: 'coins', amount: 1, tier: 'free' },
+  'google/gemma-3-27b-it:free':                  { currency: 'coins', amount: 1, tier: 'free' },
+  'deepseek/deepseek-r1:free':                   { currency: 'coins', amount: 1, tier: 'free' },
+  'mistralai/mistral-7b-instruct:free':          { currency: 'coins', amount: 1, tier: 'free' },
+  'mistralai/mistral-small-3.1-24b-instruct:free': { currency: 'coins', amount: 1, tier: 'free' },
+  'nvidia/llama-3.1-nemotron-super-49b-v1:free': { currency: 'coins', amount: 1, tier: 'free' },
+  'nvidia/llama-nemotron-nano-8b-instruct:free':  { currency: 'coins', amount: 1, tier: 'free' },
+
+  // ── PRO TIER — your API keys billed per run, gems deducted ─────────────
+
+  // Anthropic
+  'claude-haiku-4-5':                            { currency: 'gems',  amount: 1, tier: 'pro' },
+  'claude-sonnet-4-6-20250514':                  { currency: 'gems',  amount: 3, tier: 'pro' },
+
+  // OpenAI
+  'gpt-4o-mini':                                 { currency: 'gems',  amount: 1, tier: 'pro' },
+  'gpt-4o':                                      { currency: 'gems',  amount: 3, tier: 'pro' },
+
+  // Gemini paid
+  'gemini-2.5-pro':                              { currency: 'gems',  amount: 2, tier: 'pro' },
+
+  // Mistral paid
+  'mistral-large-latest':                        { currency: 'gems',  amount: 2, tier: 'pro' },
+
+  // Gemini paid direct
+  'gemini-2.5-flash':                            { currency: 'gems',  amount: 1, tier: 'pro' },
+  // Legacy / backward compat — kept so existing agent runs don't error
+  'gemini-2.0-flash':                            { currency: 'gems',  amount: 1, tier: 'pro' },
+  'claude-sonnet-4-20250514':                    { currency: 'gems',  amount: 3, tier: 'pro' },
 }
 
 // ─── PLAN HELPERS ─────────────────────────────
@@ -144,6 +187,31 @@ export async function ensureWallet(
     })
 }
 
+// ─── RESET TIME HELPERS ───────────────────────────
+/** Returns a human-readable string for how long until
+ *  the next UTC midnight coin reset.
+ *  e.g. "in 3h 42m" | "in 45m" | "in less than a minute"
+ */
+export function getTimeUntilUTCReset(): string {
+  const now = new Date()
+  const nextMidnightUTC = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1, // next day
+      0, 0, 0, 0,
+    ),
+  )
+  const msLeft = nextMidnightUTC.getTime() - now.getTime()
+  if (msLeft <= 60_000) return 'in less than a minute'
+  const totalMinutes = Math.floor(msLeft / 60_000)
+  const hours   = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours === 0) return `in ${minutes}m`
+  if (minutes === 0) return `in ${hours}h`
+  return `in ${hours}h ${minutes}m`
+}
+
 // Check and apply daily reset if needed
 export async function applyDailyReset(
   userId: string
@@ -239,7 +307,7 @@ export async function deductCost(
   if (balance < cost.amount) {
     const msg = cost.currency === 'gems'
       ? `Not enough gems. You have ${wallet.gems} gems. Pro subscribers receive 100 gems/month.`
-      : `Not enough coins. You have ${wallet.coins} coins. Your daily allowance resets at midnight UTC.`
+      : `Not enough coins. You have ${wallet.coins} coins. Your daily allowance resets ${getTimeUntilUTCReset()} (midnight UTC). Note: individual AI provider quotas may reset at different times.`
     return { success: false, message: msg }
   }
   
@@ -279,28 +347,32 @@ export async function deductCost(
 export async function refundCost(
   userId: string,
   model: string,
-  runId?: string
+  runId?: string,
 ): Promise<void> {
-  try {
+  const attemptRefund = async () => {
     const cost = MODEL_COSTS[model]
     if (!cost) return
     const supabase = getServiceSupabase()
     const wallet = await getWallet(userId)
-    
+
     const updateField = cost.currency === 'gems'
-      ? { gems: wallet.gems + cost.amount,
-          updated_at: new Date().toISOString() }
-      : { coins: Math.min(
+      ? {
+          gems: wallet.gems + cost.amount,
+          updated_at: new Date().toISOString(),
+        }
+      : {
+          coins: Math.min(
             wallet.coins + cost.amount,
-            wallet.max_coins_banked
+            wallet.max_coins_banked,
           ),
-          updated_at: new Date().toISOString() }
-    
+          updated_at: new Date().toISOString(),
+        }
+
     await supabase
       .from('user_wallets')
       .update(updateField)
       .eq('user_id', userId)
-    
+
     await supabase
       .from('wallet_transactions')
       .insert({
@@ -313,8 +385,20 @@ export async function refundCost(
         description: 'Refund: run failed',
         transaction_source: 'refund',
       })
-  } catch (err) {
-    console.warn('Refund non-fatal:', err)
+  }
+
+  // Attempt once, then retry once after a short delay before giving up.
+  // Prevents a momentary Supabase timeout from permanently losing the refund.
+  try {
+    await attemptRefund()
+  } catch (firstErr) {
+    console.warn('[wallet] refundCost first attempt failed, retrying...', firstErr)
+    try {
+      await new Promise(r => setTimeout(r, 1500))
+      await attemptRefund()
+    } catch (secondErr) {
+      console.error('[wallet] refundCost failed after retry — coin lost:', secondErr)
+    }
   }
 }
 

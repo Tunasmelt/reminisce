@@ -87,24 +87,32 @@ function ApiLabContent() {
   if (loading) return <div style={{ padding: 48, background: '#000', color: '#fff' }}>Powering up Lab...</div>
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 104px)', background: '#000' }}>
+    <div style={{
+      display: 'flex',
+      height: 'calc(100vh - 68px)',
+      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+    }}>
       <title>{`Reminisce — API Lab — ${project?.name}`}</title>
 
       {/* LEFT PANEL: REQUEST EDITOR */}
       <div style={{ 
         width: 480, 
-        borderRight: '1px solid rgba(255,255,255,0.06)', 
-        padding: 32, 
-        display: 'flex', 
+        flexShrink: 0,
+        borderRight: '1px solid rgba(255,255,255,0.08)',
+        padding: 28,
+        display: 'flex',
         flexDirection: 'column',
-        gap: 24,
-        background: 'rgba(255,255,255,0.01)'
+        gap: 20,
+        background: 'rgba(255,255,255,0.025)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        overflowY: 'auto',
       }}>
         <h2 style={{
-          fontSize: 11, fontWeight: 500,
-          letterSpacing: '0.03em',
-          textTransform: 'none',
-          color: 'rgba(255,255,255,0.35)',
+          fontSize: 10, fontWeight: 800,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.4)',
           margin: 0
         }}>
           Request
@@ -126,9 +134,11 @@ function ApiLabContent() {
             placeholder="https://api.domain.io/v1/..."
             style={{
               flex: 1,
-              background: 'rgba(255,255,255,0.04)',
+              background: 'rgba(255,255,255,0.05)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
               border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
+              borderRadius: 10,
               padding: '12px 16px',
               fontSize: 12,
               color: '#fff',
@@ -140,7 +150,14 @@ function ApiLabContent() {
 
         {/* Tabs */}
         <div>
-          <div style={{ display: 'flex', gap: 24, borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 20 }}>
+          <div style={{
+            display: 'flex', gap: 20,
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            marginBottom: 20,
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: '8px 8px 0 0',
+            padding: '0 4px',
+          }}>
             {['Headers', 'Body', 'Auth'].map(tab => (
               <button 
                 key={tab} 
@@ -173,13 +190,13 @@ function ApiLabContent() {
                       placeholder="KEY" 
                       value={h.key} 
                       onChange={(e) => updateHeader(i, e.target.value, h.value)}
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: '#fff', fontFamily: 'monospace' }}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#fff', fontFamily: 'monospace', outline: 'none' }}
                     />
                     <input 
                       placeholder="VALUE" 
                       value={h.value} 
                       onChange={(e) => updateHeader(i, h.key, e.target.value)}
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: '#fff', fontFamily: 'monospace' }}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#fff', fontFamily: 'monospace', outline: 'none' }}
                     />
                   </div>
                 ))}
@@ -196,7 +213,17 @@ function ApiLabContent() {
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder='{ "key": "value" }'
-                style={{ width: '100%', height: 160, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: 16, fontSize: 12, color: accent, fontFamily: 'monospace', outline: 'none', resize: 'none' }}
+                style={{
+                  width: '100%', height: 160,
+                  background: 'rgba(4,4,16,0.8)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.09)',
+                  borderRadius: 10, padding: 16,
+                  fontSize: 12, color: accent,
+                  fontFamily: 'ui-monospace, monospace',
+                  outline: 'none', resize: 'none',
+                }}
               />
             )}
             {activeTab === 'Auth' && (
@@ -213,48 +240,51 @@ function ApiLabContent() {
           </div>
         </div>
 
-        <button 
-          onClick={handleSend}
-          disabled={isExecuting}
-          style={{
-            background: accent,
-            color: '#000',
-            border: 'none',
-            borderRadius: 999,
-            padding: '14px',
-            fontSize: 11,
-            fontWeight: 800,
-            letterSpacing: 'normal',
-            textTransform: 'none',
-            cursor: 'pointer'
-          }}
-        >
+          <button 
+            onClick={handleSend}
+            disabled={isExecuting}
+            style={{
+              background: accent,
+              border: 'none',
+              borderRadius: 999,
+              padding: '14px',
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: 'normal',
+              textTransform: 'none',
+              boxShadow: `0 0 20px ${hexToRgba(accent, 0.3)}`,
+              transition: 'all 0.15s',
+              cursor: 'pointer'
+            }}
+          >
           {isExecuting ? 'Sending...' : 'Send request'}
         </button>
       </div>
 
       {/* RIGHT PANEL: RESPONSE VIEWER */}
-      <div style={{ flex: 1, padding: 32, display: 'flex', flexDirection: 'column', gap: 24, background: '#000' }}>
+      <div style={{ flex: 1, padding: 28, display: 'flex', flexDirection: 'column', gap: 20, background: 'transparent', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{
-            fontSize: 11, fontWeight: 500,
-            letterSpacing: '0.03em',
-            textTransform: 'none',
+            fontSize: 10, fontWeight: 800,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
             color: 'rgba(255,255,255,0.35)',
-            margin: 0
+            margin: 0,
           }}>
             Response
           </h2>
           <button style={{ 
-            background: 'transparent', 
-            border: `1px solid ${accent}`, 
-            color: accent, 
-            borderRadius: 999, 
-            padding: '6px 20px', 
-            fontSize: 11, 
-            fontWeight: 600, 
-            textTransform: 'none',
-            cursor: 'pointer' 
+            background: hexToRgba(accent, 0.08),
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            border: `1px solid ${hexToRgba(accent, 0.3)}`,
+            color: accent,
+            borderRadius: 999,
+            padding: '7px 20px',
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
           }}>
             AI suggest
           </button>
@@ -312,11 +342,13 @@ function ApiLabContent() {
                 }}
                 style={{
                   padding: '14px 16px',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                  borderRadius: 8,
-                  background: 'rgba(255,255,255,0.02)',
-                  cursor: 'pointer',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,0.03)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
                   transition: 'all 0.15s',
+                  cursor: 'pointer',
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.borderColor =

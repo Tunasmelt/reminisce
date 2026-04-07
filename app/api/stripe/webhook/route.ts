@@ -5,10 +5,9 @@ import { getServiceSupabase } from '@/lib/supabase'
 export const dynamic = 'force-dynamic'
 
 function getStripe() {
-  return new Stripe(
-    (process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder') as string,
-    { apiVersion: '2026-02-25.clover' }
-  )
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new Error('STRIPE_SECRET_KEY is not configured')
+  return new Stripe(key, { apiVersion: '2026-02-25.clover' })
 }
 
 export async function POST(req: Request) {

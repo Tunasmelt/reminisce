@@ -12,12 +12,15 @@ import { useFileSystem } from '@/hooks/useFileSystem'
 
 
 interface Project {
-  id: string
-  name: string
-  description: string | null
-  type?: string
-  cluster?: string
-  created_at?: string
+  id:             string
+  name:           string
+  description:    string | null
+  type?:          string
+  cluster?:       string
+  created_at?:    string
+  repo_url?:      string | null
+  git_branch?:    string | null
+  git_last_commit?: string | null
 }
 
 interface Phase {
@@ -49,10 +52,11 @@ export default function ProjectOverviewPage() {
   const { accent } = useTheme()
   const projectId = params.id as string
 
-  const { 
-    isConnected, isSupported, 
-    openFolder 
-  } = useFileSystem()
+  const {
+    isConnected, isSupported,
+    openFolder, folderName,
+    gitState, pendingChanges,
+  } = useFileSystem(projectId)
   
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -60,6 +64,13 @@ export default function ProjectOverviewPage() {
   const [features, setFeatures] = useState<Feature[]>([])
   const [contextDoc, setContextDoc] = useState('')
   const [showExport, setShowExport] = useState(false)
+  // Blueprint local injection sync indicator
+  // Stored in localStorage — device-specific, not in DB
+  const [lastSynced, setLastSynced] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem(`blueprint_synced_${projectId}`) ?? null
+  })
+  const [hasBlueprint, setHasBlueprint] = useState(false)
   
   const loadData = useCallback(async () => {
     try {
@@ -75,6 +86,15 @@ export default function ProjectOverviewPage() {
       setPhases(pData || [])
       setFeatures(fData || [])
       setContextDoc(ctxData?.content || '')
+
+      // Check if a blueprint exists for this project (contexts table has data)
+      try {
+        const { count } = await supabase
+          .from('contexts')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', projectId)
+        setHasBlueprint((count ?? 0) > 0)
+      } catch { /* non-fatal */ }
 
     } catch (err) { 
       console.error(err)
@@ -98,25 +118,27 @@ export default function ProjectOverviewPage() {
   if (!project) return <div style={{ padding: 100, textAlign: 'center', color: '#ef4444', fontWeight: 900 }}>404: MISSING PROJECT DOMAIN</div>
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '48px 32px' }}>
+    <div style={{ background: 'transparent' }}>
+  <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 32px 80px' }}>
       <title>{`Reminisce — Overview — ${project.name}`}</title>
       
       {/* Live indicator + name */}
-      <div style={{ marginBottom: 24 }}>
+<div style={{ marginBottom: 28 }}>
         <div style={{
           display: 'flex', alignItems: 'center',
-          gap: 8, marginBottom: 8,
+          gap: 8, marginBottom: 12,
         }}>
           <span style={{
-            width: 7, height: 7, borderRadius: '50%',
+            width: 6, height: 6, borderRadius: '50%',
             background: '#10b981',
             display: 'inline-block',
             animation: 'agentPulse 2s infinite',
+            flexShrink: 0,
           }} />
           <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: 'rgba(255,255,255,0.35)',
-            letterSpacing: '0.12em',
+            fontSize: 9, fontWeight: 800,
+            color: 'rgba(255,255,255,0.3)',
+            letterSpacing: '0.14em',
             textTransform: 'uppercase',
           }}>
             Live · {project?.name}
@@ -126,42 +148,51 @@ export default function ProjectOverviewPage() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
+          gap: 16,
+          flexWrap: 'wrap',
         }}>
           <div>
             <h1 style={{
-              fontSize: 36, fontWeight: 800,
-              color: '#fff', letterSpacing: '-0.02em',
-              margin: '0 0 4px',
+              fontSize: 'clamp(28px, 3.5vw, 42px)',
+              fontWeight: 900,
+              color: '#fff',
+              letterSpacing: '-0.03em',
+              margin: '0 0 6px',
+              lineHeight: 1,
             }}>
               {project?.name}
             </h1>
             <div style={{
               fontSize: 13,
               color: 'rgba(255,255,255,0.35)',
+              lineHeight: 1.5,
             }}>
-              {project?.description || 'No description'}
+              {project?.description || 'No description — edit in Settings'}
             </div>
           </div>
           <button
             onClick={() => setShowExport(true)}
             style={{
               display: 'flex', alignItems: 'center',
-              gap: 6, padding: '8px 16px',
+              gap: 6, padding: '9px 18px',
               border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8, background: 'transparent',
+              borderRadius: 10,
+              background: 'rgba(255,255,255,0.04)',
+              backdropFilter: 'blur(10px)',
               color: 'rgba(255,255,255,0.5)',
               fontSize: 12, fontWeight: 600,
               cursor: 'pointer', transition: 'all 0.15s',
+              flexShrink: 0,
             }}
             onMouseEnter={e => {
               e.currentTarget.style.borderColor = accent
               e.currentTarget.style.color = accent
+              e.currentTarget.style.background = hexToRgba(accent, 0.06)
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.borderColor =
-                'rgba(255,255,255,0.1)'
-              e.currentTarget.style.color =
-                'rgba(255,255,255,0.5)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+              e.currentTarget.style.color = 'rgba(255,255,255,0.5)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
             }}
           >
             ↓ Export Brief
@@ -186,9 +217,13 @@ export default function ProjectOverviewPage() {
             label: 'Progress', color: accent },
         ].map((stat, i) => (
           <div key={i} style={{
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: 10, padding: '14px 16px',
+            background: 'rgba(255,255,255,0.04)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 14, padding: '18px 20px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+            transition: 'all 0.2s ease',
             display: 'flex', alignItems: 'center',
             gap: 12,
           }}>
@@ -204,7 +239,7 @@ export default function ProjectOverviewPage() {
             </div>
             <div>
               <div style={{
-                fontSize: 22, fontWeight: 800,
+                fontSize: 26, fontWeight: 900,
                 color: stat.color, lineHeight: 1,
                 marginBottom: 2,
               }}>
@@ -225,9 +260,11 @@ export default function ProjectOverviewPage() {
 
       {/* Overall Progress bar */}
       <div style={{
-        background: 'rgba(255,255,255,0.02)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 10, padding: '16px 20px',
+        background: 'rgba(255,255,255,0.03)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 14, padding: '18px 22px',
         marginBottom: 24,
       }}>
         <div style={{
@@ -249,10 +286,11 @@ export default function ProjectOverviewPage() {
           </span>
         </div>
         <div style={{
-          height: 6,
-          background: 'rgba(255,255,255,0.08)',
+          height: 8,
+          background: 'rgba(255,255,255,0.07)',
           borderRadius: 999, overflow: 'hidden',
-          marginBottom: 10,
+          marginBottom: 12,
+          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)',
         }}>
           <div style={{
             height: '100%', width: '0%',
@@ -318,14 +356,17 @@ export default function ProjectOverviewPage() {
             href={action.href}
             style={{
               display: 'flex', flexDirection: 'column',
-              padding: '18px 20px',
+              padding: '20px 22px',
               background: action.bg,
-              border: `1px solid ${action.color}30`,
-              borderRadius: 12,
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: `1px solid ${action.color}35`,
+              borderRadius: 16,
               textDecoration: 'none',
-              transition: 'all 0.15s',
+              transition: 'all 0.2s ease',
               position: 'relative',
               overflow: 'hidden',
+              boxShadow: `0 4px 20px ${action.color}10`,
             }}
             onMouseEnter={e => {
               e.currentTarget.style.borderColor =
@@ -346,14 +387,15 @@ export default function ProjectOverviewPage() {
               fontSize: 14,
             }}>→</span>
             <span style={{
-              fontSize: 20, marginBottom: 12,
+              fontSize: 22, marginBottom: 14,
               color: action.color,
+              display: 'block',
             }}>
               {action.icon}
             </span>
             <span style={{
-              fontSize: 14, fontWeight: 700,
-              color: '#fff', marginBottom: 4,
+              fontSize: 15, fontWeight: 700,
+              color: '#fff', marginBottom: 6,
             }}>
               {action.label}
             </span>
@@ -372,9 +414,11 @@ export default function ProjectOverviewPage() {
         <div style={{
           margin: '0 0 24px',
           padding: '14px 20px',
-          background: hexToRgba(accent, 0.06),
+          background: hexToRgba(accent, 0.05),
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
           border: `1px solid ${hexToRgba(accent, 0.2)}`,
-          borderRadius: 12,
+          borderRadius: 14,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -418,26 +462,65 @@ export default function ProjectOverviewPage() {
       {isConnected && (
         <div style={{
           margin: '0 0 24px',
-          padding: '10px 16px',
+          padding: '12px 16px',
           background: 'rgba(16,185,129,0.06)',
           border: '1px solid rgba(16,185,129,0.2)',
-          borderRadius: 8,
+          borderRadius: 10,
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          fontSize: 12,
-          color: '#10b981',
+          justifyContent: 'space-between',
+          gap: 12,
         }}>
-          <span style={{ fontSize: 14 }}>✓</span>
-          Local folder connected — context files 
-          sync automatically
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 14, color: '#10b981' }}>✓</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#10b981' }}>
+                {folderName ? `"${folderName}" connected` : 'Local folder connected'}
+                {lastSynced
+                  ? ` · Synced ${new Date(lastSynced).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                  : hasBlueprint
+                    ? ' · Blueprint ready to inject'
+                    : ''}
+              </div>
+              {gitState.branch && (
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2, fontFamily: 'monospace' }}>
+                  {gitState.branch}
+                  {gitState.lastCommit ? ` · ${gitState.lastCommit.slice(0, 60)}` : ''}
+                </div>
+              )}
+              {pendingChanges.length > 0 && (
+                <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 3 }}>
+                  ⚠ {pendingChanges.length} local file{pendingChanges.length !== 1 ? 's' : ''} changed — open Context to review
+                </div>
+              )}
+            </div>
+          </div>
+          {hasBlueprint && !lastSynced && (
+            <Link
+              href={`/dashboard/projects/${projectId}/wizard`}
+              style={{ fontSize: 11, fontWeight: 700, color: '#10b981', textDecoration: 'underline', textUnderlineOffset: 3, whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              Go to Wizard →
+            </Link>
+          )}
+          {lastSynced && (
+            <button
+              onClick={() => {
+                localStorage.removeItem(`blueprint_synced_${projectId}`)
+                setLastSynced(null)
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: 'rgba(255,255,255,0.25)', textDecoration: 'underline', textUnderlineOffset: 2, flexShrink: 0 }}
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
 
       {/* PHASES SECTION */}
       <section style={{ marginBottom: 64 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <h2 style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '0.02em', margin: 0 }}>Phases</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 800, color: '#fff', letterSpacing: '0.04em', margin: 0 }}>Phases</h2>
           <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)', borderRadius: 6, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>
             {phases.length}
           </div>
@@ -452,9 +535,11 @@ export default function ProjectOverviewPage() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 12,
-              background: 'rgba(255,255,255,0.01)',
-              borderRadius: 16,
-              border: '1px dashed rgba(255,255,255,0.06)'
+              background: 'rgba(255,255,255,0.02)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderRadius: 20,
+              border: '1px dashed rgba(255,255,255,0.1)'
             }}>
               <div style={{
                 width: 48, height: 48,
@@ -500,17 +585,21 @@ export default function ProjectOverviewPage() {
           ) : (
             phases.map((phase) => (
               <div key={phase.id} style={{
-                padding: '16px 20px',
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 10, marginBottom: 8,
+                padding: '18px 22px',
+                background: 'rgba(255,255,255,0.03)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 14, marginBottom: 10,
                 display: 'flex', alignItems: 'flex-start',
-                gap: 14,
+                gap: 16,
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
               }}>
                 {/* Phase badge */}
                 <div style={{
-                  width: 32, height: 32,
-                  borderRadius: '50%',
+                  width: 36, height: 36,
+                  borderRadius: 10,
                   background: hexToRgba(accent, 0.15),
                   border: `1px solid ${hexToRgba(accent, 0.3)}`,
                   display: 'flex', alignItems: 'center',
@@ -565,7 +654,7 @@ export default function ProjectOverviewPage() {
                   </div>
                   {/* Phase progress bar */}
                   <div style={{
-                    height: 2,
+                    height: 3,
                     background: 'rgba(255,255,255,0.07)',
                     borderRadius: 999,
                     overflow: 'hidden',
@@ -611,6 +700,7 @@ export default function ProjectOverviewPage() {
           onClose={() => setShowExport(false)}
         />
       )}
+      </div>
     </div>
   )
 }

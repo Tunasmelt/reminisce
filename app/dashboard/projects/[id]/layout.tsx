@@ -5,11 +5,10 @@ import { useParams, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { 
   LayoutDashboard, Wand2, 
-  GitBranch, MessageSquare, Bot, 
+  GitBranch, LayoutGrid, MessageSquare, Bot, 
   FlaskConical, Settings, ChevronLeft,
   ChevronRight
 } from 'lucide-react'
-import ThemeToggle from '@/components/theme-toggle'
 import { useTheme } from '@/hooks/useTheme'
 import { supabase } from '@/lib/supabase'
 
@@ -26,6 +25,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const { accent } = useTheme()
   const projectId = params.id as string
   const [projectName, setProjectName] = useState('')
+  const [pamReminderCount, setPamReminderCount] = useState(0)
 
   const [collapsed, setCollapsed] = useState(false)
   // Persist to localStorage
@@ -45,10 +45,30 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       return !prev
     })
   }
-
   useEffect(() => {
     supabase.from('projects').select('name').eq('id', projectId).single()
       .then(({ data }) => setProjectName(data?.name || ''))
+
+    // Load due reminder count for PAM badge
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      fetch(`/api/pam/reminders?projectId=${projectId}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.reminders) {
+            // Count reminders due today or overdue
+            const today = new Date().toISOString().split('T')[0]
+            const due = data.reminders.filter(
+              (r: { due_date: string | null }) =>
+                !r.due_date || r.due_date <= today
+            ).length
+            setPamReminderCount(due)
+          }
+        })
+        .catch(() => { /* non-fatal */ })
+    })
   }, [projectId])
 
   const navItems = [
@@ -65,12 +85,17 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       href: `/dashboard/projects/${projectId}/graph`
     },
     { 
+      label: 'Board', icon: LayoutGrid,
+      href: `/dashboard/projects/${projectId}/board`
+    },
+    { 
       label: 'Prompts', icon: MessageSquare,
       href: `/dashboard/projects/${projectId}/prompts`
     },
     { 
-      label: 'Agent', icon: Bot,
-      href: `/dashboard/projects/${projectId}/agent`
+      label: 'PAM', icon: Bot,
+      href: `/dashboard/projects/${projectId}/agent`,
+      badge: pamReminderCount,
     },
     { 
       label: 'API Lab', icon: FlaskConical,
@@ -86,20 +111,22 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
 
   return (
     <div style={{
-      minHeight: '100vh',
-      background: '#000',
       display: 'flex',
+      background: 'transparent',
     }}>
       
       {/* SIDEBAR */}
       <aside style={{
         position: 'fixed',
-        top: 56, // below global header
+        top: 68,
         left: 0,
         bottom: 0,
         width: sidebarW,
-        background: '#0a0a0a',
-        borderRight: '1px solid rgba(255,255,255,0.06)',
+        height: 'calc(100vh - 68px)',
+        background: 'rgba(8,8,20,0.85)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderRight: '1px solid rgba(255,255,255,0.08)',
         display: 'flex',
         flexDirection: 'column',
         zIndex: 30,
@@ -189,6 +216,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                   display: 'flex',
                   alignItems: 'center',
                   gap: collapsed ? 0 : 10,
+                  position: 'relative',
                   padding: collapsed 
                     ? '10px 0' 
                     : '9px 12px',
@@ -197,8 +225,11 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                   borderRadius: collapsed ? 0 : 8,
                   marginBottom: 2,
                   background: isActive
-                    ? hexToRgba(accent, 0.1)
+                    ? hexToRgba(accent, 0.12)
                     : 'transparent',
+                  boxShadow: isActive
+                    ? `inset 0 0 0 1px ${hexToRgba(accent, 0.15)}`
+                    : 'none',
                   borderLeft: collapsed 
                     ? `2px solid ${isActive 
                         ? accent 
@@ -234,23 +265,33 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                   size={16} 
                   style={{ flexShrink: 0 }}
                 />
+                {(item as { label: string; icon: React.ElementType; href: string; badge?: number }).badge ? (
+                  <div style={{
+                    position: 'absolute',
+                    top: collapsed ? 6 : 4,
+                    right: collapsed ? 6 : 4,
+                    width: 7, height: 7,
+                    borderRadius: '50%',
+                    background: '#ef4444',
+                    border: '1.5px solid #07070f',
+                    flexShrink: 0,
+                  }}/>
+                ) : null}
                 {!collapsed && item.label}
               </Link>
             )
           })}
         </nav>
 
-        {/* Theme toggle + Collapse button */}
+        {/* Collapse button only — ThemeToggle removed from sidebar */}
         <div style={{
           borderTop: '1px solid rgba(255,255,255,0.06)',
-          padding: collapsed ? '12px 0' : '12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
+          padding: collapsed ? '8px 0' : '8px',
           flexShrink: 0,
-          alignItems: collapsed ? 'center' : 'stretch',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'flex-start',
         }}>
-          {!collapsed && <ThemeToggle />}
           <button
             onClick={toggleCollapse}
             style={{
@@ -298,8 +339,8 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         marginLeft: sidebarW,
         transition: 'margin-left 0.2s ease',
         flex: 1,
-        minHeight: '100vh',
-        paddingTop: 56, // global header height
+        minWidth: 0,
+        overflow: 'auto',
       }}>
         {children}
       </main>

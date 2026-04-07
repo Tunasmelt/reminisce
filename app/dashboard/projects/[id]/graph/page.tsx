@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useParams } from 'next/navigation'
 import {
   ReactFlow,
   Background,
@@ -9,6 +9,8 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   Handle,
   Position,
   NodeProps,
@@ -18,325 +20,403 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import dagre from '@dagrejs/dagre'
-
 import { supabase } from '@/lib/supabase'
-import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { 
-  Maximize, 
-  Play, 
-  Target,
-  Box,
-  Layers,
-  Network,
-  Terminal,
+import {
+  Plus, Layers, Box, Target, Network,
+  LayoutGrid, RefreshCw, Maximize2,
 } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
+import { useProjectData } from './useProjectData'
+import { DetailPanel } from './DetailPanel'
+import { AddPhaseModal } from './AddPhaseModal'
+import { AddFeatureModal } from './AddFeatureModal'
+import { StatusBadge, FeatureTypeBadge, ProgressRing } from './StatusBadge'
+import type {
+  PhaseNodeData,
+  FeatureNodeData,
+  ProjectNodeData,
+} from './types'
 
-// --- Custom Node Components ---
+// ─────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────
 
-const ProjectNode = ({ data }: NodeProps) => (
-  <div className="px-6 py-5 shadow-[0_0_30px_var(--accent-glow)] rounded-rem-md bg-reminisce-bg-surface border border-[var(--accent-primary)] min-w-[240px] group transition-all">
-    <Handle type="source" position={Position.Bottom} className="w-2.5 h-2.5 bg-[var(--accent-primary)] border-2 border-black" />
-    <div className="flex items-center gap-3 mb-2">
-      <Target className="w-4 h-4 text-[var(--accent-primary)]" />
-      <span className="text-[9px] font-black text-[var(--accent-primary)] uppercase tracking-[0.3em]">Project Master</span>
-    </div>
-    <div className="text-2xl font-black text-white tracking-tighter uppercase italic">{data.label as string}</div>
-  </div>
-)
-
-const PhaseNode = ({ data }: NodeProps) => (
-  <div className="px-6 py-5 shadow-2xl rounded-rem-md bg-reminisce-bg-surface border border-reminisce-accent-blue min-w-[220px] group transition-all">
-    <Handle type="target" position={Position.Top} className="w-2.5 h-2.5 bg-reminisce-accent-blue border-2 border-black" />
-    <Handle type="source" position={Position.Bottom} className="w-2.5 h-2.5 bg-reminisce-accent-blue border-2 border-black" />
-    <div className="flex items-center gap-3 mb-2">
-      <Layers className="w-4 h-4 text-reminisce-accent-blue" />
-      <span className="text-[9px] font-black text-reminisce-accent-blue uppercase tracking-[0.3em]">Lifecycle Phase</span>
-    </div>
-    <div className="text-lg font-black text-white italic tracking-tight uppercase">{data.label as string}</div>
-    <div className="text-[10px] text-reminisce-text-muted mt-3 line-clamp-2 font-medium uppercase tracking-widest">{data.description as string}</div>
-    <div className="mt-5 flex items-center justify-between">
-      <span className={`text-[9px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-rem-pill border ${
-        data.status === 'complete' ? 'bg-reminisce-accent-green/10 border-reminisce-accent-green/30 text-reminisce-accent-green' :
-        data.status === 'active' ? 'bg-reminisce-accent-blue/10 border-reminisce-accent-blue/30 text-reminisce-accent-blue' :
-        'bg-reminisce-bg-base border-reminisce-border-subtle text-reminisce-text-muted'
-      }`}>
-        {data.status as string}
-      </span>
-    </div>
-  </div>
-)
-
-const FeatureNode = ({ data }: NodeProps) => (
-  <div className="px-5 py-4 shadow-2xl rounded-rem-md bg-reminisce-bg-surface border border-reminisce-accent-purple min-w-[200px] group transition-all">
-    <Handle type="target" position={Position.Top} className="w-2.5 h-2.5 bg-reminisce-accent-purple border-2 border-black" />
-    <div className="flex items-center gap-3 mb-2">
-      <Box className="w-4 h-4 text-reminisce-accent-purple" />
-      <span className="text-[9px] font-black text-reminisce-accent-purple uppercase tracking-[0.3em]">Feature Module</span>
-    </div>
-    <div className="text-sm font-black text-white mb-4 italic tracking-tight uppercase">{data.label as string}</div>
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex gap-1.5">
-        <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-rem-pill border border-reminisce-border-default bg-black text-reminisce-text-muted">
-          {data.featureType as string}
-        </span>
-      </div>
-      <Button 
-        size="icon" 
-        className="w-8 h-8 bg-[var(--accent-primary)] hover:brightness-110 text-black rounded-rem-md shadow-lg shadow-[var(--accent-glow)] active-button-press"
-        onClick={(e) => {
-          e.stopPropagation();
-          window.location.href = `/dashboard/projects/${data.projectId}/agent?featureId=${data.id}`;
-        }}
-      >
-        <Play className="w-3.5 h-3.5 fill-current" />
-      </Button>
-    </div>
-  </div>
-)
-
-// --- Layout Engine ---
-
-const PROJECT_NODE_W = 280
-const PROJECT_NODE_H = 100
-const PHASE_NODE_W = 260
-const PHASE_NODE_H = 130
-const FEATURE_NODE_W = 220
-const FEATURE_NODE_H = 110
-
-function getLayoutedElements(
-  nodes: Node[],
-  edges: Edge[]
-) {
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({
-    rankdir: 'TB',
-    ranksep: 100,
-    nodesep: 50,
-    marginx: 60,
-    marginy: 60,
-  })
-
-  nodes.forEach(node => {
-    // Size based on node type
-    const isProject = node.type === 'projectNode'
-    const isPhase = node.type === 'phaseNode'
-    g.setNode(node.id, {
-      width: isProject 
-        ? PROJECT_NODE_W 
-        : isPhase 
-        ? PHASE_NODE_W 
-        : FEATURE_NODE_W,
-      height: isProject 
-        ? PROJECT_NODE_H 
-        : isPhase 
-        ? PHASE_NODE_H 
-        : FEATURE_NODE_H,
-    })
-  })
-
-  edges.forEach(edge => {
-    g.setEdge(edge.source, edge.target)
-  })
-
-  dagre.layout(g)
-
-  const layoutedNodes = nodes.map(node => {
-    const nodeWithPosition = g.node(node.id)
-    const isProject = node.type === 'projectNode'
-    const isPhase = node.type === 'phaseNode'
-    const w = isProject 
-      ? PROJECT_NODE_W 
-      : isPhase 
-      ? PHASE_NODE_W 
-      : FEATURE_NODE_W
-    const h = isProject 
-      ? PROJECT_NODE_H 
-      : isPhase 
-      ? PHASE_NODE_H 
-      : FEATURE_NODE_H
-    return {
-      ...node,
-      position: {
-        x: nodeWithPosition.x - w / 2,
-        y: nodeWithPosition.y - h / 2,
-      },
-    }
-  })
-
-  return { nodes: layoutedNodes, edges }
+function hexToRgba(hex: string, a: number) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r},${g},${b},${a})`
 }
 
-// --- Graph Component ---
+// ─────────────────────────────────────────────────────────
+//  Custom Node Components — pure inline glass styles
+// ─────────────────────────────────────────────────────────
 
-export default function GraphPage() {
+const ProjectNode = ({ data }: NodeProps) => {
+  const d = data as unknown as ProjectNodeData
+  return (
+    <div style={{
+      padding: '16px 20px',
+      minWidth: 220,
+      background: 'rgba(8,8,20,0.92)',
+      backdropFilter: 'blur(20px)',
+      border: '1px solid var(--accent-primary)',
+      borderRadius: 14,
+      boxShadow: '0 0 28px var(--accent-glow), 0 8px 32px rgba(0,0,0,0.5)',
+      transition: 'all 0.2s ease',
+    }}>
+      <Handle type="source" position={Position.Bottom}
+        style={{ background: 'var(--accent-primary)', width: 8, height: 8, border: '2px solid #000' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <Target size={13} color="var(--accent-primary)" />
+        <span style={{
+          fontSize: 8, fontWeight: 800,
+          color: 'var(--accent-primary)',
+          letterSpacing: '0.2em', textTransform: 'uppercase',
+        }}>Project</span>
+      </div>
+      <div style={{
+        fontSize: 16, fontWeight: 800,
+        color: '#fff', letterSpacing: '-0.01em',
+        marginBottom: 6,
+      }}>
+        {d.label}
+      </div>
+      <div style={{
+        fontSize: 10, color: 'rgba(255,255,255,0.3)',
+        display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span>{d.featureCount ?? 0} features</span>
+        <span style={{ color: 'rgba(255,255,255,0.15)' }}>·</span>
+        <span style={{ color: '#34d399' }}>{d.doneCount ?? 0} done</span>
+      </div>
+    </div>
+  )
+}
+
+const PhaseNode = ({ data }: NodeProps) => {
+  const d = data as unknown as PhaseNodeData
+  return (
+    <div style={{
+      padding: '14px 18px',
+      minWidth: 200,
+      background: 'rgba(8,8,20,0.9)',
+      backdropFilter: 'blur(16px)',
+      border: '1px solid rgba(59,130,246,0.45)',
+      borderRadius: 14,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      transition: 'all 0.2s ease',
+    }}>
+      <Handle type="target" position={Position.Top}
+        style={{ background: '#60a5fa', width: 7, height: 7, border: '2px solid #000' }} />
+      <Handle type="source" position={Position.Bottom}
+        style={{ background: '#60a5fa', width: 7, height: 7, border: '2px solid #000' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+        <Layers size={12} color="#60a5fa" />
+        <span style={{
+          fontSize: 8, fontWeight: 800,
+          color: '#60a5fa',
+          letterSpacing: '0.18em', textTransform: 'uppercase',
+        }}>Phase</span>
+        <div style={{ marginLeft: 'auto' }}>
+          <ProgressRing
+            total={d.featureCount ?? 0}
+            done={d.doneCount ?? 0}
+            size={24}
+            color="#34d399"
+          />
+        </div>
+      </div>
+      <div style={{
+        fontSize: 13, fontWeight: 700,
+        color: '#fff', marginBottom: 4,
+        letterSpacing: '-0.01em',
+      }}>
+        {d.label}
+      </div>
+      {d.description && (
+        <div style={{
+          fontSize: 10, color: 'rgba(255,255,255,0.35)',
+          lineHeight: 1.4, marginBottom: 8,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}>
+          {d.description}
+        </div>
+      )}
+      <StatusBadge status={d.status ?? 'planned'} />
+    </div>
+  )
+}
+
+const FeatureNode = ({ data }: NodeProps) => {
+  const d = data as unknown as FeatureNodeData
+  return (
+    <div style={{
+      padding: '12px 16px',
+      minWidth: 180,
+      background: 'rgba(8,8,20,0.9)',
+      backdropFilter: 'blur(16px)',
+      border: '1px solid rgba(139,92,246,0.4)',
+      borderRadius: 14,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      transition: 'all 0.2s ease',
+    }}>
+      <Handle type="target" position={Position.Top}
+        style={{ background: '#a78bfa', width: 7, height: 7, border: '2px solid #000' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 7 }}>
+        <Box size={11} color="#a78bfa" />
+        <span style={{
+          fontSize: 8, fontWeight: 800,
+          color: '#a78bfa',
+          letterSpacing: '0.18em', textTransform: 'uppercase',
+        }}>Feature</span>
+        <span style={{
+          marginLeft: 'auto',
+          fontSize: 9, fontWeight: 700,
+          color: 'rgba(255,255,255,0.2)',
+          fontFamily: 'ui-monospace, monospace',
+        }}>
+          #{d.priority}
+        </span>
+      </div>
+      <div style={{
+        fontSize: 12, fontWeight: 700,
+        color: '#fff', marginBottom: 8,
+        letterSpacing: '-0.01em',
+        lineHeight: 1.3,
+      }}>
+        {d.label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+        <StatusBadge status={d.status ?? 'planned'} />
+        <FeatureTypeBadge type={d.featureType} />
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────
+//  Dagre layout engine
+// ─────────────────────────────────────────────────────────
+
+const NODE_SIZES = {
+  projectNode:  { w: 240, h: 100 },
+  phaseNode:    { w: 220, h: 130 },
+  featureNode:  { w: 200, h: 110 },
+}
+
+function getLayoutedElements(nodes: Node[], edges: Edge[]) {
+  const g = new dagre.graphlib.Graph()
+  g.setDefaultEdgeLabel(() => ({}))
+  g.setGraph({ rankdir: 'TB', ranksep: 90, nodesep: 40, marginx: 60, marginy: 60 })
+
+  nodes.forEach(node => {
+    const type = node.type as keyof typeof NODE_SIZES
+    const size = NODE_SIZES[type] ?? NODE_SIZES.featureNode
+    g.setNode(node.id, { width: size.w, height: size.h })
+  })
+  edges.forEach(edge => g.setEdge(edge.source, edge.target))
+  dagre.layout(g)
+
+  return {
+    nodes: nodes.map(node => {
+      const type = node.type as keyof typeof NODE_SIZES
+      const size = NODE_SIZES[type] ?? NODE_SIZES.featureNode
+      const pos = g.node(node.id)
+      return {
+        ...node,
+        position: { x: pos.x - size.w / 2, y: pos.y - size.h / 2 },
+      }
+    }),
+    edges,
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+//  Inner graph component (needs ReactFlowProvider above)
+// ─────────────────────────────────────────────────────────
+
+function GraphInner() {
   const params = useParams()
-  const router = useRouter()
   const projectId = params.id as string
   const { accent } = useTheme()
+  const { fitView } = useReactFlow()
+
+  const {
+    project, phases, features, loading,
+    createPhase, updatePhase, deletePhase,
+    createFeature, updateFeature, deleteFeature,
+  } = useProjectData(projectId)
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
-  const [loading, setLoading] = useState(true)
-  const [project, setProject] = useState<{ name: string } | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
+  const [graphReady, setGraphReady] = useState(false)
 
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [selectedNodeData, setSelectedNodeData] = useState<{
-    id: string
-    type: 'phase' | 'feature'
-    name: string
-    description?: string
-    status?: string
-    featureId?: string
-  } | null>(null)
-  const [panelSaving, setPanelSaving] = useState(false)
+  // Panel state
+  const [selectedType, setSelectedType] =
+    useState<'phase' | 'feature' | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const STATUS_CONFIG: Record<string, { label: string, color: string }> = {
-    todo:        { label: 'To Do',      color: '#6b7280' },
-    in_progress: { label: 'In Progress', color: accent },
-    blocked:     { label: 'Blocked',    color: '#ef4444' },
-    done:        { label: 'Done',       color: '#10b981' },
-    review:      { label: 'In Review',  color: '#8b5cf6' },
-  }
+  // Modal state
+  const [showAddPhase, setShowAddPhase] = useState(false)
+  const [showAddFeature, setShowAddFeature] = useState(false)
+  const [modalSaving, setModalSaving] = useState(false)
 
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 1024)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
+  // Node types memoised to prevent React Flow re-registration
   const nodeTypes = useMemo(() => ({
     projectNode: ProjectNode,
     phaseNode: PhaseNode,
-    featureNode: FeatureNode
+    featureNode: FeatureNode,
   }), [])
 
-  const loadGraph = useCallback(async () => {
-    try {
-      const [
-        { data: proj },
-        { data: phases },
-        { data: features },
-        { data: savedNodes }
-      ] = await Promise.all([
-        supabase.from('projects').select('*').eq('id', projectId).single(),
-        supabase.from('phases').select('*').eq('project_id', projectId).order('order_index'),
-        supabase.from('features').select('id, name, description, status, type, phase_id').eq('project_id', projectId).order('priority'),
-        supabase.from('graph_nodes').select('*').eq('project_id', projectId)
-      ])
+  // ── Build graph from data ─────────────────────────────
 
-      setProject(proj)
+  const buildGraph = useCallback((
+    proj: typeof project,
+    phasesData: typeof phases,
+    featuresData: typeof features,
+    savedPositions: Map<string, { x: number, y: number }>
+  ) => {
+    if (!proj || phasesData.length === 0) {
+      setNodes([])
+      setEdges([])
+      return
+    }
 
-      if (!phases || phases.length === 0) {
-        setLoading(false)
-        return
-      }
+    const rfNodes: Node[] = []
+    const rfEdges: Edge[] = []
 
-      const rfNodes: Node[] = []
-      const rfEdges: Edge[] = []
+    const projKey = `project-${proj.id}`
+    const projPos = savedPositions.get(projKey)
+    rfNodes.push({
+      id: projKey,
+      type: 'projectNode',
+      position: projPos ?? { x: 400, y: 50 },
+      data: {
+        label: proj.name,
+        featureCount: featuresData.length,
+        doneCount: featuresData.filter(
+          f => f.status === 'done' || f.status === 'complete'
+        ).length,
+      } as ProjectNodeData,
+    })
 
-      const nodeMap = new Map()
-      savedNodes?.forEach(n => {
-        const key = n.metadata?.original_id || `${n.type}-${n.metadata?.phase_id || n.metadata?.feature_id || 'proj'}`
-        nodeMap.set(key, n)
-      })
+    phasesData.forEach((phase, pIdx) => {
+      const phaseKey = `phase-${phase.id}`
+      const phaseFeats = featuresData.filter(f => f.phase_id === phase.id)
+      const phaseDone = phaseFeats.filter(
+        f => f.status === 'done' || f.status === 'complete'
+      ).length
+      const phasePos = savedPositions.get(phaseKey)
 
-      const projKey = `project-${projectId}`
-      const savedProjNode = nodeMap.get(projKey)
       rfNodes.push({
-        id: projKey,
-        type: 'projectNode',
-        position: savedProjNode ? { x: savedProjNode.position_x, y: savedProjNode.position_y } : { x: 400, y: 50 },
-        data: { label: proj.name }
+        id: phaseKey,
+        type: 'phaseNode',
+        position: phasePos ?? { x: pIdx * 340, y: 220 },
+        data: {
+          label: phase.name,
+          description: phase.description,
+          status: phase.status ?? 'planned',
+          phaseId: phase.id,
+          featureCount: phaseFeats.length,
+          doneCount: phaseDone,
+          orderIndex: phase.order_index,
+        } as PhaseNodeData,
       })
 
-      phases?.forEach((phase, index) => {
-        const phaseKey = `phase-${phase.id}`
-        const savedPhaseNode = nodeMap.get(phaseKey)
-        const phaseX = index * 350
-        const phasePos = savedPhaseNode ? { x: savedPhaseNode.position_x, y: savedPhaseNode.position_y } : { x: phaseX, y: 220 }
-        
+      rfEdges.push({
+        id: `e-proj-phase-${phase.id}`,
+        source: projKey,
+        target: phaseKey,
+        animated: true,
+        style: { stroke: '#3b82f6', strokeWidth: 1.5, opacity: 0.5 },
+      })
+
+      phaseFeats.forEach((feature, fIdx) => {
+        const featKey = `feature-${feature.id}`
+        const featPos = savedPositions.get(featKey)
+        const fallback = {
+          x: (pIdx * 340) + (fIdx % 2 === 0 ? -120 : 120),
+          y: 420 + Math.floor(fIdx / 2) * 160,
+        }
+
         rfNodes.push({
-          id: phaseKey,
-          type: 'phaseNode',
-          position: phasePos,
-          data: { label: phase.name, description: phase.description, status: phase.status || 'todo', id: phase.id, type: 'phase' }
+          id: featKey,
+          type: 'featureNode',
+          position: featPos ?? fallback,
+          data: {
+            label: feature.name,
+            description: feature.description,
+            featureType: feature.type,
+            status: feature.status ?? 'planned',
+            featureId: feature.id,
+            phaseId: feature.phase_id,
+            priority: feature.priority,
+            projectId,
+          } as FeatureNodeData,
         })
 
         rfEdges.push({
-          id: `e-project-phase-${phase.id}`,
-          source: projKey,
-          target: phaseKey,
+          id: `e-phase-feat-${feature.id}`,
+          source: phaseKey,
+          target: featKey,
           animated: true,
-          style: { stroke: '#3b82f6', strokeWidth: 2 }
-        })
-
-        const phaseFeatures = features?.filter(f => f.phase_id === phase.id)
-        phaseFeatures?.forEach((feature, fIndex) => {
-          const featureKey = `feature-${feature.id}`
-          const savedFeatureNode = nodeMap.get(featureKey)
-          const fPos = savedFeatureNode 
-            ? { x: savedFeatureNode.position_x, y: savedFeatureNode.position_y } 
-            : { x: phasePos.x + (fIndex % 2 === 0 ? -150 : 150), y: phasePos.y + 250 + (Math.floor(fIndex/2) * 150) }
-
-          rfNodes.push({
-            id: featureKey,
-            type: 'featureNode',
-            position: fPos,
-            data: { 
-              label: feature.name, 
-              featureType: feature.type, 
-              status: feature.status || 'todo', 
-              description: feature.description, 
-              id: feature.id, 
-              featureId: feature.id,
-              type: 'feature', 
-              projectId: projectId 
-            }
-          })
-
-          rfEdges.push({
-            id: `e-phase-feature-${feature.id}`,
-            source: phaseKey,
-            target: featureKey,
-            animated: true,
-            style: { stroke: '#8b5cf6', strokeWidth: 2 }
-          })
+          style: { stroke: '#8b5cf6', strokeWidth: 1.5, opacity: 0.5 },
         })
       })
+    })
 
-      const { nodes: layoutedNodes, edges: layoutedEdges } 
-        = getLayoutedElements(rfNodes, rfEdges)
-      setNodes(layoutedNodes)
-      setEdges(layoutedEdges)
-    } catch (err) {
-      console.error(err)
-      toast.error('Failed to load project graph')
-    } finally {
-      setLoading(false)
-    }
+    const { nodes: laid, edges: laidE } = getLayoutedElements(rfNodes, rfEdges)
+    setNodes(laid)
+    setEdges(laidE)
   }, [projectId, setNodes, setEdges])
 
+  // ── Load saved positions + build ──────────────────────
+
+  const initialised = useRef(false)
+
   useEffect(() => {
-    loadGraph()
-  }, [loadGraph])
+    if (loading || initialised.current) return
+    initialised.current = true
 
-  const onNodeDragStop = useCallback(async (_: React.MouseEvent, node: Node) => {
+    const load = async () => {
+      const { data: savedNodes } = await supabase
+        .from('graph_nodes')
+        .select('*')
+        .eq('project_id', projectId)
+
+      const posMap = new Map<string, { x: number; y: number }>()
+      savedNodes?.forEach(n => {
+        const key = n.metadata?.original_id
+        if (key) posMap.set(key, { x: n.position_x, y: n.position_y })
+      })
+
+      buildGraph(project, phases, features, posMap)
+      setGraphReady(true)
+    }
+    load()
+  }, [loading, project, phases, features, projectId, buildGraph])
+
+  // Rebuild graph reactively when data changes after initial load
+  useEffect(() => {
+    if (!graphReady || loading) return
+    // Don't reload positions — keep current node positions
+    const posMap = new Map<string, { x: number; y: number }>()
+    nodes.forEach(n => posMap.set(n.id, n.position))
+    buildGraph(project, phases, features, posMap)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phases, features])
+
+  // ── Save node position on drag stop ──────────────────
+
+  const onNodeDragStop = useCallback(async (
+    _: React.MouseEvent, node: Node
+  ) => {
     try {
-      const type = node.type?.slice(0, -4)
-      const metadata: Record<string, string> = { original_id: node.id }
-      
-      if (node.id.startsWith('project-')) {
-      } else if (node.id.startsWith('phase-')) {
-        metadata.phase_id = node.id.replace('phase-', '')
-      } else if (node.id.startsWith('feature-')) {
-        metadata.feature_id = node.id.replace('feature-', '')
-      }
-
       const { data: existing } = await supabase
         .from('graph_nodes')
         .select('id')
@@ -345,453 +425,643 @@ export default function GraphPage() {
         .maybeSingle()
 
       if (existing) {
-        await supabase
-          .from('graph_nodes')
+        await supabase.from('graph_nodes')
           .update({ position_x: node.position.x, position_y: node.position.y })
           .eq('id', existing.id)
       } else {
-        await supabase
-          .from('graph_nodes')
-          .insert({
-            project_id: projectId,
-            type: type,
-            label: node.data.label as string,
-            status: node.data.status as string || 'planned',
-            position_x: node.position.x,
-            position_y: node.position.y,
-            metadata: metadata
-          })
-      }
-    } catch (err) { console.error(err) }
-  }, [projectId])
-
-  const handleNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      if (node.type === 'featureNode' || node.type === 'phaseNode') {
-        setSelectedNodeId(node.id)
-        setSelectedNodeData({
-          id: node.id,
-          type: node.type === 'phaseNode' ? 'phase' : 'feature',
-          name: node.data.label as string,
-          description: (node.data.description as string) || '',
-          status: (node.data.status as string) || 'todo',
-          featureId: (node.data.featureId as string) || node.id,
+        const typeSlug = node.type?.replace('Node', '') ?? 'unknown'
+        await supabase.from('graph_nodes').insert({
+          project_id: projectId,
+          type: typeSlug,
+          label: node.data.label as string,
+          status: (node.data.status as string) ?? 'planned',
+          position_x: node.position.x,
+          position_y: node.position.y,
+          metadata: { original_id: node.id },
         })
       }
-    },
-    []
-  )
-
-  const handleSaveStatus = async (newStatus: string) => {
-    if (!selectedNodeData) return
-    setPanelSaving(true)
-    try {
-      const type = selectedNodeData.type
-      const table = type === 'phase' ? 'phases' : 'features'
-      // featureId is already the actual DB id
-      const id = selectedNodeData.featureId || selectedNodeData.id.split('-').pop()
-      
-      const { error } = await supabase
-        .from(table)
-        .update({ status: newStatus })
-        .eq('id', id)
-      
-      if (error) throw error
-
-      // Update node data locally
-      setNodes(nds => nds.map(n => 
-        n.id === selectedNodeId
-          ? { ...n, data: { ...n.data, status: newStatus } }
-          : n
-      ))
-      setSelectedNodeData(prev => 
-        prev ? { ...prev, status: newStatus } : null
-      )
-      toast.success('Status updated')
-    } catch {
-      toast.error('Failed to update status')
-    } finally {
-      setPanelSaving(false)
+    } catch (err) {
+      console.error('Failed to save node position:', err)
     }
+  }, [projectId])
+
+  // ── Node click → open detail panel ───────────────────
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    if (node.type === 'phaseNode') {
+      const d = node.data as unknown as PhaseNodeData
+      setSelectedType('phase')
+      setSelectedId(d.phaseId)
+    } else if (node.type === 'featureNode') {
+      const d = node.data as unknown as FeatureNodeData
+      setSelectedType('feature')
+      setSelectedId(d.featureId)
+    }
+  }, [])
+
+  // ── Reset layout ──────────────────────────────────────
+
+  const handleResetLayout = useCallback(async () => {
+    // Clear saved positions then rebuild with dagre
+    await supabase.from('graph_nodes')
+      .delete().eq('project_id', projectId)
+    initialised.current = false
+    buildGraph(project, phases, features, new Map())
+    setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 100)
+    toast.success('Layout reset')
+  }, [project, phases, features, projectId, buildGraph, fitView])
+
+  // ── Progress stats ────────────────────────────────────
+
+  const stats = useMemo(() => {
+    const total = features.length
+    const done = features.filter(
+      f => f.status === 'done' || f.status === 'complete'
+    ).length
+    const inProgress = features.filter(
+      f => f.status === 'in_progress'
+    ).length
+    const blocked = features.filter(
+      f => f.status === 'blocked'
+    ).length
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0
+    return { total, done, inProgress, blocked, pct }
+  }, [features])
+
+  // ── Modal handlers ────────────────────────────────────
+
+  const handleCreatePhase = async (name: string, description: string) => {
+    setModalSaving(true)
+    const result = await createPhase({ name, description })
+    setModalSaving(false)
+    if (result) setShowAddPhase(false)
   }
 
-  const progressStats = useMemo(() => {
-    const featureNodes = nodes.filter(
-      n => n.type === 'featureNode'
-    )
-    const total = featureNodes.length
-    const done = featureNodes.filter(
-      n => n.data.status === 'done' || n.data.status === 'complete'
-    ).length
-    const inProgress = featureNodes.filter(
-      n => n.data.status === 'in_progress' || n.data.status === 'active'
-    ).length
-    const blocked = featureNodes.filter(
-      n => n.data.status === 'blocked'
-    ).length
-    return { 
-      total, done, inProgress, blocked,
-      pct: total > 0 ? Math.round((done / total) * 100) : 0 
-    }
-  }, [nodes])
+  const handleCreateFeature = async (input: {
+    name: string
+    description: string
+    type: string
+    phaseId: string
+  }) => {
+    setModalSaving(true)
+    const result = await createFeature({
+      name: input.name,
+      description: input.description,
+      type: input.type,
+      phaseId: input.phaseId,
+    })
+    setModalSaving(false)
+    if (result) setShowAddFeature(false)
+  }
+
+  // ── Loading / empty states ────────────────────────────
 
   if (loading) return (
-    <div className="flex-1 flex flex-col gap-6 p-6">
-      <div className="h-10 w-64 animate-skeleton rounded-rem-md" />
-      <div className="flex-1 animate-skeleton rounded-rem-lg border border-reminisce-border-subtle" />
+    <div style={{
+      height: 'calc(100vh - 68px)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 16,
+      padding: 24,
+      background: '#07070f',
+    }}>
+      {[1, 2].map(i => (
+        <div key={i} style={{
+          height: i === 1 ? 40 : '100%',
+          background: 'rgba(255,255,255,0.04)',
+          borderRadius: 12,
+          animation: 'skeletonPulse 1.5s ease infinite',
+        }} />
+      ))}
     </div>
   )
 
-  if (nodes.length === 0) return (
-    <div className="flex-1 flex flex-col items-center justify-center p-20 text-center bg-black rounded-rem-lg border border-dashed border-reminisce-border-subtle animate-page-fade gap-8">
-      <div className="w-24 h-24 bg-reminisce-accent-primary/5 rounded-rem-xl flex items-center justify-center border border-reminisce-accent-primary/10">
-        <Network className="w-12 h-12 text-reminisce-accent-primary opacity-10" />
+  if (!loading && nodes.length === 0) return (
+    <div style={{
+      height: 'calc(100vh - 68px)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 20,
+      padding: 40,
+      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+    }}>
+      <div style={{
+        width: 64, height: 64, borderRadius: 18,
+        background: 'rgba(var(--accent-rgb), 0.06)',
+        border: '1px solid rgba(var(--accent-rgb), 0.15)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Network size={28} color={hexToRgba(accent, 0.5)} />
       </div>
-      <div className="space-y-4 max-w-md">
-        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Topology Void</h3>
-        <p className="text-xs font-black uppercase tracking-widest text-reminisce-text-muted leading-relaxed italic opacity-60">Architectural map is currently offline. Deploy the Wizard to propagate technical nodes.</p>
-        <Button onClick={() => window.location.href = `/dashboard/projects/${projectId}/wizard`} className="bg-[var(--accent-primary)] hover:brightness-110 text-black font-black h-14 px-10 rounded-rem-pill mt-4 active-button-press uppercase text-[10px] tracking-widest shadow-xl shadow-[var(--accent-glow)]">
-          DEPLOY_WIZARD_DAEMON
-        </Button>
-      </div>
-    </div>
-  )
-
-  const MobileListView = () => {
-    const phases = nodes.filter(n => n.type === 'phaseNode')
-    const features = nodes.filter(n => n.type === 'featureNode')
-    return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
-        {phases.map(phase => (
-          <div key={phase.id} className="bg-reminisce-bg-surface border border-reminisce-border-subtle rounded-rem-lg p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-reminisce-border-subtle pb-4">
-              <div className="flex items-center gap-3"><Layers className="w-5 h-5 text-reminisce-accent-blue" /><h3 className="text-sm font-black text-white uppercase italic">{phase.data.label as string}</h3></div>
-              <span className="text-[8px] font-black uppercase bg-reminisce-accent-blue/5 text-reminisce-accent-blue px-3 py-1 rounded-rem-pill border border-reminisce-accent-blue/20">{phase.data.status as string}</span>
-            </div>
-            <div className="grid gap-2">
-              {features.filter((f: Node) => edges.some((e: Edge) => e.source === phase.id && e.target === f.id)).map((feature: Node) => (
-                 <div key={feature.id} className="bg-black border border-reminisce-border-subtle rounded-rem-md p-4 flex items-center justify-between active-button-press" onClick={(e) => handleNodeClick(e, feature)}>
-                    <div className="flex items-center gap-3"><Box className="w-4 h-4 text-reminisce-accent-purple" /><div><p className="text-xs font-black text-white uppercase italic">{feature.data.label as string}</p><p className="text-[8px] text-reminisce-text-muted font-black uppercase mt-1">{feature.data.featureType as string}</p></div></div>
-                    <Terminal className="w-4 h-4 text-reminisce-text-muted" />
-                 </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className={`flex-1 ${isMobile ? 'flex flex-col' : 'h-[calc(100vh-220px)]'} bg-black rounded-rem-lg border border-reminisce-border-subtle overflow-hidden flex relative shadow-2xl animate-page-fade`}>
-      <title>{`Reminisce — Graph — ${project?.name}`}</title>
-      {isMobile ? <MobileListView /> : (
-        <div style={{ position: 'relative', flex: 1 }}>
-          {/* Progress bar overlay */}
-          <div style={{
-            position: 'absolute',
-            top: 16, left: 16,
-            zIndex: 10,
-            background: 'rgba(0,0,0,0.8)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 12,
-            padding: '12px 16px',
-            minWidth: 220,
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 8,
-            }}>
-              <span style={{
-                fontSize: 11, fontWeight: 600,
-                color: 'rgba(255,255,255,0.5)',
-              }}>
-                Progress
-              </span>
-              <span style={{
-                fontSize: 13, fontWeight: 700,
-                color: accent,
-              }}>
-                {progressStats.pct}%
-              </span>
-            </div>
-            {/* Progress bar track */}
-            <div style={{
-              height: 4,
-              background: 'rgba(255,255,255,0.08)',
-              borderRadius: 999,
-              overflow: 'hidden',
-              marginBottom: 10,
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${progressStats.pct}%`,
-                background: accent,
-                borderRadius: 999,
-                transition: 'width 0.4s ease',
-              }} />
-            </div>
-            {/* Stats row */}
-            <div style={{
-              display: 'flex', gap: 12,
-            }}>
-              {[
-                { label: 'Done', val: progressStats.done, 
-                  color: '#10b981' },
-                { label: 'Active', 
-                  val: progressStats.inProgress, 
-                  color: accent },
-                { label: 'Blocked', 
-                  val: progressStats.blocked, 
-                  color: '#ef4444' },
-                { label: 'Total', 
-                  val: progressStats.total, 
-                  color: 'rgba(255,255,255,0.3)' },
-              ].map(s => (
-                <div key={s.label} style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: 14, fontWeight: 700,
-                    color: s.color,
-                  }}>
-                    {s.val}
-                  </div>
-                  <div style={{
-                    fontSize: 9,
-                    color: 'rgba(255,255,255,0.25)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    marginTop: 1,
-                  }}>
-                    {s.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <ReactFlow 
-            nodes={nodes} 
-            edges={edges} 
-            onNodesChange={onNodesChange} 
-            onEdgesChange={onEdgesChange} 
-            onNodeDragStop={onNodeDragStop} 
-            onNodeClick={handleNodeClick} 
-            nodeTypes={nodeTypes} 
-            fitView 
-            fitViewOptions={{ 
-              padding: 0.15,
-              includeHiddenNodes: false 
+      <div style={{ textAlign: 'center', maxWidth: 360 }}>
+        <h3 style={{
+          fontSize: 20, fontWeight: 800,
+          color: '#fff', marginBottom: 8,
+          letterSpacing: '-0.01em',
+        }}>
+          No graph yet
+        </h3>
+        <p style={{
+          fontSize: 13,
+          color: 'rgba(255,255,255,0.4)',
+          lineHeight: 1.7, marginBottom: 24,
+        }}>
+          Run the Wizard to auto-generate your project architecture,
+          or add phases manually below.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => window.location.href =
+              `/dashboard/projects/${projectId}/wizard`}
+            style={{
+              padding: '10px 22px',
+              background: accent, color: '#000',
+              border: 'none', borderRadius: 10,
+              fontSize: 12, fontWeight: 800,
+              cursor: 'pointer',
+              boxShadow: `0 0 20px ${hexToRgba(accent, 0.3)}`,
             }}
-            minZoom={0.1}
-            maxZoom={2}
-            snapToGrid 
-            snapGrid={[20, 20]} 
-            colorMode="dark"
           >
-            <Background variant={BackgroundVariant.Dots} gap={40} size={1} color="#1f1f1f" />
-            <Controls showFitView={false} className="bg-reminisce-bg-surface border-reminisce-border-default text-white fill-white rounded-rem-md overflow-hidden" />
-            <MiniMap className="bg-black/80 border border-reminisce-border-subtle rounded-rem-md overflow-hidden !m-4" nodeColor={(n) => n.type === 'projectNode' ? 'var(--accent-primary)' : n.type === 'phaseNode' ? '#3b82f6' : '#8b5cf6'} maskColor="rgba(0,0,0,0.8)" />
-            <div className="absolute top-6 right-6 z-10"><Button size="sm" variant="outline" className="bg-reminisce-bg-surface/80 backdrop-blur-xl border-reminisce-border-default hover:bg-black text-[11px] font-medium text-white rounded-rem-pill px-6 text-transform-none h-10 shadow-2xl active-button-press"><Maximize className="w-3.5 h-3.5 mr-2" /> Recenter</Button></div>
-          </ReactFlow>
-
-          {/* Detail panel (right side overlay) */}
-          {selectedNodeData && (
-            <div style={{
-              position: 'absolute',
-              top: 0, right: 0, bottom: 0,
-              width: 280,
-              background: 'rgba(0,0,0,0.92)',
-              backdropFilter: 'blur(20px)',
-              borderLeft: '1px solid rgba(255,255,255,0.08)',
-              zIndex: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              animation: 'slideInRight 0.2s ease',
-            }}>
-              {/* Panel header */}
-              <div style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <div>
-                  <div style={{
-                    fontSize: 9, fontWeight: 700,
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                    color: 'rgba(255,255,255,0.3)',
-                    marginBottom: 4,
-                  }}>
-                    {selectedNodeData.type === 'phase'
-                      ? 'Phase' : 'Feature'}
-                  </div>
-                  <div style={{
-                    fontSize: 14, fontWeight: 600,
-                    color: '#fff',
-                    lineHeight: 1.3,
-                  }}>
-                    {selectedNodeData.name}
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedNodeId(null)
-                    setSelectedNodeData(null)
-                  }}
-                  style={{
-                    width: 28, height: 28,
-                    border: 'none',
-                    background: 'rgba(255,255,255,0.06)',
-                    borderRadius: 6,
-                    color: 'rgba(255,255,255,0.4)',
-                    cursor: 'pointer', fontSize: 16,
-                    display: 'flex', alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-
-              {/* Panel body */}
-              <div style={{
-                flex: 1, overflowY: 'auto',
-                padding: '16px 20px',
-              }}>
-                
-                {/* Status selector */}
-                {selectedNodeData.type === 'feature' && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{
-                      fontSize: 10, fontWeight: 600,
-                      letterSpacing: '0.06em',
-                      color: 'rgba(255,255,255,0.35)',
-                      textTransform: 'uppercase',
-                      marginBottom: 8,
-                    }}>
-                      Status
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column', gap: 4,
-                    }}>
-                      {Object.entries(STATUS_CONFIG)
-                        .map(([key, cfg]) => {
-                        const isSelected = 
-                          selectedNodeData.status === key
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => 
-                              handleSaveStatus(key)}
-                            disabled={panelSaving}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              padding: '8px 12px',
-                              borderRadius: 8,
-                              border: `1px solid ${
-                                isSelected 
-                                  ? cfg.color + '50'
-                                  : 'rgba(255,255,255,0.07)'
-                              }`,
-                              background: isSelected
-                                ? cfg.color + '15'
-                                : 'transparent',
-                              color: isSelected
-                                ? cfg.color : '#fff',
-                              fontSize: 12,
-                              fontWeight: isSelected ? 600 : 400,
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              transition: 'all 0.12s',
-                            }}
-                          >
-                            <div style={{
-                              width: 8, height: 8,
-                              borderRadius: '50%',
-                              background: cfg.color,
-                              flexShrink: 0,
-                            }} />
-                            {cfg.label}
-                            {isSelected && (
-                              <span style={{
-                                marginLeft: 'auto',
-                                fontSize: 12,
-                              }}>
-                                ✓
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Description */}
-                {selectedNodeData.description && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{
-                      fontSize: 10, fontWeight: 600,
-                      letterSpacing: '0.06em',
-                      color: 'rgba(255,255,255,0.35)',
-                      textTransform: 'uppercase',
-                      marginBottom: 8,
-                    }}>
-                      Description
-                    </div>
-                    <div style={{
-                      fontSize: 12,
-                      color: 'rgba(255,255,255,0.55)',
-                      lineHeight: 1.65,
-                    }}>
-                      {selectedNodeData.description}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Panel footer: Run Agent button */}
-              {selectedNodeData.type === 'feature' && (
-                <div style={{
-                  padding: '14px 20px',
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
-                }}>
-                  <button
-                    onClick={() => router.push(
-                      `/dashboard/projects/${projectId}/agent?featureId=${selectedNodeData.featureId}`
-                    )}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      padding: '10px',
-                      background: accent,
-                      color: '#000',
-                      border: 'none',
-                      borderRadius: 8,
-                      fontSize: 12, fontWeight: 700,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ▶ Run Agent
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+            Open Wizard →
+          </button>
+          <button
+            onClick={() => setShowAddPhase(true)}
+            style={{
+              padding: '10px 22px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 10, color: '#fff',
+              fontSize: 12, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            + Add Phase Manually
+          </button>
         </div>
+      </div>
+
+      {showAddPhase && (
+        <AddPhaseModal
+          onClose={() => setShowAddPhase(false)}
+          onConfirm={handleCreatePhase}
+          saving={modalSaving}
+        />
       )}
     </div>
+  )
+
+  // ── Main render ───────────────────────────────────────
+
+  return (
+    <div style={{
+      height: 'calc(100vh - 68px)',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+      overflow: 'hidden',
+      position: 'relative',
+    }}>
+      <title>{`Reminisce — Graph — ${project?.name}`}</title>
+
+      {/* Inline keyframe for pulse animation */}
+      <style>{`
+        @keyframes agentPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.85); }
+        }
+      `}</style>
+
+      {/* ── Top bar ──────────────────────────────────── */}
+      <div style={{
+        height: 52,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 20px',
+        gap: 10,
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(8,8,20,0.7)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        position: 'relative',
+        zIndex: 10,
+      }}>
+        {/* Project name */}
+        <div style={{
+          fontSize: 12, fontWeight: 700,
+          color: 'rgba(255,255,255,0.5)',
+          letterSpacing: '0.04em',
+          marginRight: 4,
+        }}>
+          {project?.name}
+        </div>
+
+        <div style={{
+          width: 1, height: 16,
+          background: 'rgba(255,255,255,0.1)',
+          marginRight: 4,
+        }} />
+
+        {/* Add Phase */}
+        <button
+          onClick={() => setShowAddPhase(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px',
+            background: 'rgba(59,130,246,0.1)',
+            border: '1px solid rgba(59,130,246,0.25)',
+            borderRadius: 8,
+            color: '#60a5fa',
+            fontSize: 11, fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(59,130,246,0.18)'
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.4)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(59,130,246,0.1)'
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.25)'
+          }}
+        >
+          <Layers size={12} />
+          Add Phase
+        </button>
+
+        {/* Add Feature */}
+        <button
+          onClick={() => setShowAddFeature(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px',
+            background: 'rgba(139,92,246,0.1)',
+            border: '1px solid rgba(139,92,246,0.25)',
+            borderRadius: 8,
+            color: '#a78bfa',
+            fontSize: 11, fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(139,92,246,0.18)'
+            e.currentTarget.style.borderColor = 'rgba(139,92,246,0.4)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(139,92,246,0.1)'
+            e.currentTarget.style.borderColor = 'rgba(139,92,246,0.25)'
+          }}
+        >
+          <Box size={12} />
+          Add Feature
+        </button>
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Reset Layout */}
+        <button
+          onClick={handleResetLayout}
+          title="Reset to auto-layout"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 12px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.09)',
+            borderRadius: 8,
+            color: 'rgba(255,255,255,0.4)',
+            fontSize: 11, fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+            e.currentTarget.style.color = '#fff'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+            e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+          }}
+        >
+          <RefreshCw size={11} /> Reset Layout
+        </button>
+
+        {/* Fit view */}
+        <button
+          onClick={() => fitView({ padding: 0.15, duration: 400 })}
+          title="Fit all nodes in view"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 12px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.09)',
+            borderRadius: 8,
+            color: 'rgba(255,255,255,0.4)',
+            fontSize: 11, fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+            e.currentTarget.style.color = '#fff'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+            e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+          }}
+        >
+          <Maximize2 size={11} /> Fit View
+        </button>
+
+        {/* Board link */}
+        <a
+          href={`/dashboard/projects/${projectId}/board`}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 14px',
+            background: hexToRgba(accent, 0.08),
+            border: `1px solid ${hexToRgba(accent, 0.2)}`,
+            borderRadius: 8,
+            color: accent,
+            fontSize: 11, fontWeight: 700,
+            textDecoration: 'none',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = hexToRgba(accent, 0.16)
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = hexToRgba(accent, 0.08)
+          }}
+        >
+          <LayoutGrid size={11} /> Board View
+        </a>
+      </div>
+
+      {/* ── Canvas + detail panel ─────────────────────── */}
+      <div style={{
+        flex: 1,
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragStop}
+          onNodeClick={onNodeClick}
+          onPaneClick={() => {
+            setSelectedType(null)
+            setSelectedId(null)
+          }}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.15 }}
+          minZoom={0.1}
+          maxZoom={2.5}
+          snapToGrid
+          snapGrid={[16, 16]}
+          colorMode="dark"
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={36}
+            size={1}
+            color="#1a1a2e"
+          />
+          <Controls
+            showFitView={false}
+            style={{
+              background: 'rgba(8,8,20,0.85)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 10,
+              overflow: 'hidden',
+            }}
+          />
+          <MiniMap
+            nodeColor={n =>
+              n.type === 'projectNode'
+                ? accent
+                : n.type === 'phaseNode'
+                ? '#3b82f6'
+                : '#8b5cf6'
+            }
+            maskColor="rgba(0,0,0,0.7)"
+            style={{
+              background: 'rgba(8,8,20,0.85)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 10,
+            }}
+          />
+        </ReactFlow>
+
+        {/* Progress overlay — top left */}
+        <div style={{
+          position: 'absolute',
+          top: 16, left: 16,
+          zIndex: 10,
+          background: 'rgba(8,8,20,0.88)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255,255,255,0.09)',
+          borderRadius: 14,
+          padding: '14px 18px',
+          minWidth: 220,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 10,
+          }}>
+            <span style={{
+              fontSize: 9, fontWeight: 800,
+              color: 'rgba(255,255,255,0.35)',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+            }}>
+              Progress
+            </span>
+            <span style={{
+              fontSize: 14, fontWeight: 900,
+              color: accent, fontVariantNumeric: 'tabular-nums',
+            }}>
+              {stats.pct}%
+            </span>
+          </div>
+          <div style={{
+            height: 6,
+            background: 'rgba(255,255,255,0.07)',
+            borderRadius: 999,
+            overflow: 'hidden',
+            marginBottom: 12,
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.4)',
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${stats.pct}%`,
+              background: accent,
+              borderRadius: 999,
+              transition: 'width 0.6s ease',
+              boxShadow: `0 0 8px ${hexToRgba(accent, 0.5)}`,
+            }} />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              { label: 'Done',    val: stats.done,       color: '#34d399' },
+              { label: 'Active',  val: stats.inProgress, color: accent },
+              { label: 'Blocked', val: stats.blocked,    color: '#f87171' },
+              { label: 'Total',   val: stats.total,      color: 'rgba(255,255,255,0.3)' },
+            ].map(s => (
+              <div key={s.label} style={{ flex: 1 }}>
+                <div style={{
+                  fontSize: 15, fontWeight: 800,
+                  color: s.color, lineHeight: 1,
+                  marginBottom: 3,
+                }}>
+                  {s.val}
+                </div>
+                <div style={{
+                  fontSize: 8,
+                  color: 'rgba(255,255,255,0.25)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  fontWeight: 700,
+                }}>
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Detail panel — right side overlay */}
+        {selectedType && selectedId && (
+          <DetailPanel
+            type={selectedType}
+            itemId={selectedId}
+            projectId={projectId}
+            phases={phases}
+            features={features}
+            onClose={() => {
+              setSelectedType(null)
+              setSelectedId(null)
+            }}
+            onUpdatePhase={updatePhase}
+            onDeletePhase={deletePhase}
+            onUpdateFeature={updateFeature}
+            onDeleteFeature={deleteFeature}
+          />
+        )}
+      </div>
+
+      {/* ── Plus button overlay — bottom centre ──────── */}
+      <div style={{
+        position: 'absolute',
+        bottom: 24,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 15,
+        display: 'flex',
+        gap: 10,
+      }}>
+        <button
+          onClick={() => setShowAddPhase(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '10px 20px',
+            background: 'rgba(8,8,20,0.9)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(59,130,246,0.3)',
+            borderRadius: 999,
+            color: '#60a5fa',
+            fontSize: 12, fontWeight: 700,
+            cursor: 'pointer',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(59,130,246,0.15)'
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(8,8,20,0.9)'
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.3)'
+          }}
+        >
+          <Plus size={13} />
+          <Layers size={13} />
+          Phase
+        </button>
+
+        <button
+          onClick={() => setShowAddFeature(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '10px 20px',
+            background: 'rgba(8,8,20,0.9)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(139,92,246,0.3)',
+            borderRadius: 999,
+            color: '#a78bfa',
+            fontSize: 12, fontWeight: 700,
+            cursor: 'pointer',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(139,92,246,0.15)'
+            e.currentTarget.style.borderColor = 'rgba(139,92,246,0.5)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'rgba(8,8,20,0.9)'
+            e.currentTarget.style.borderColor = 'rgba(139,92,246,0.3)'
+          }}
+        >
+          <Plus size={13} />
+          <Box size={13} />
+          Feature
+        </button>
+      </div>
+
+      {/* ── Modals ───────────────────────────────────── */}
+      {showAddPhase && (
+        <AddPhaseModal
+          onClose={() => setShowAddPhase(false)}
+          onConfirm={handleCreatePhase}
+          saving={modalSaving}
+        />
+      )}
+
+      {showAddFeature && (
+        <AddFeatureModal
+          phases={phases}
+          onClose={() => setShowAddFeature(false)}
+          onConfirm={handleCreateFeature}
+          saving={modalSaving}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────
+//  Export — wrapped in ReactFlowProvider (required for
+//  useReactFlow hook inside GraphInner)
+// ─────────────────────────────────────────────────────────
+
+export default function GraphPage() {
+  return (
+    <ReactFlowProvider>
+      <GraphInner />
+    </ReactFlowProvider>
   )
 }
