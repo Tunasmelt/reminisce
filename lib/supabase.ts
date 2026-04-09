@@ -31,3 +31,18 @@ export async function verifyProjectAccess(
   return (data.workspaces as unknown as { owner_id: string }).owner_id === userId
 }
 
+/**
+ * Checks if a user is banned. Call at the start of sensitive API routes.
+ * Returns true if banned (caller should return 403).
+ */
+export async function isUserBanned(userId: string): Promise<boolean> {
+  const sb = getServiceSupabase()
+  const { data } = await sb
+    .from('user_plans')
+    .select('banned_at')
+    .eq('user_id', userId)
+    .single()
+  return !!data?.banned_at
+}
+
+

@@ -1,6 +1,5 @@
-Open Supabase → SQL Editor → New query.
-Paste and run the following SQL exactly.
-Report any errors.
+-- Run in Supabase SQL Editor
+-- PAM Phase 2 + Prompts Studio Schema Patch
 
 -- ============================================================
 -- PAM Phase 2 + Prompts Studio Schema Patch

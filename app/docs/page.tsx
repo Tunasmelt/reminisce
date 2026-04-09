@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useTheme } from '@/hooks/useTheme'
-import { Inter } from 'next/font/google'
 import LandingNav from '@/components/landing-nav'
 import {
   BookOpen, ArrowRight, Zap, Database, Bot,
@@ -11,14 +10,30 @@ import {
   Users, MessageSquare,
 } from 'lucide-react'
 
-const inter = Inter({ subsets: ['latin'] })
-
 function hexToRgba(hex: string, a: number) {
   if (!hex || hex.length < 7) return `rgba(245,158,11,${a})`
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   return `rgba(${r},${g},${b},${a})`
+}
+
+function ThreeDCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [tilt, setTilt] = useState({ x: 0, y: 0 })
+  const [hov, setHov] = useState(false)
+  const onMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    setTilt({ x:((e.clientY-rect.top-rect.height/2)/rect.height)*5, y:-((e.clientX-rect.left-rect.width/2)/rect.width)*5 })
+  }, [])
+  return (
+    <div ref={ref} onMouseMove={onMove} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>{setTilt({x:0,y:0});setHov(false)}}
+      style={{ transform:`perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`, transition:hov?'transform 0.1s ease':'transform 0.5s cubic-bezier(0.23,1,0.32,1)', position:'relative', overflow:'hidden', ...style }}>
+      <div style={{ position:'absolute', inset:0, background:'linear-gradient(135deg,rgba(255,255,255,0.04) 0%,transparent 60%)', opacity:hov?1:0, transition:'opacity 0.3s', pointerEvents:'none', zIndex:1 }}/>
+      <div style={{ position:'relative', zIndex:2, height:'100%' }}>{children}</div>
+    </div>
+  )
 }
 
 // Inline code block
@@ -117,7 +132,7 @@ export default function DocsPage() {
   )
 
   const FileBlock = ({ files }: { files: string[] }) => (
-    <div style={{
+    <ThreeDCard style={{
       background: 'rgba(4,4,16,0.8)',
       border: '1px solid rgba(255,255,255,0.1)',
       borderRadius: 12, padding: '18px 22px',
@@ -134,14 +149,14 @@ export default function DocsPage() {
           {f}
         </div>
       ))}
-    </div>
+    </ThreeDCard>
   )
 
   const prose: React.CSSProperties = { fontSize: 15, color: 'rgba(255,255,255,0.6)', lineHeight: 1.8 }
   const sectionGap: React.CSSProperties = { marginBottom: 72 }
 
   return (
-    <div className={`${inter.className} page-enter`} style={{
+    <div style={{
       background: '#05050f', color: '#fff', minHeight: '100vh',
     }}>
       <style>{`
@@ -150,12 +165,12 @@ export default function DocsPage() {
         }
       `}</style>
 
-      {/* Fixed glow */}
+      {/* Fixed top glow */}
       <div style={{
         position: 'fixed', top: -200, left: '50%',
         transform: 'translateX(-50%)',
-        width: 600, height: 350,
-        background: `radial-gradient(ellipse,${hexToRgba(ac, 0.1)} 0%,transparent 70%)`,
+        width: 800, height: 500,
+        background: `radial-gradient(ellipse,${hexToRgba(ac,0.12)} 0%,transparent 70%)`,
         pointerEvents: 'none', zIndex: 0,
       }}/>
 
@@ -163,7 +178,7 @@ export default function DocsPage() {
 
       {/* Page header — with floating ring 3D accent */}
       <div style={{
-        paddingTop: mobile ? 110 : 130, paddingBottom: 40,
+        padding: mobile ? '130px 24px 64px' : '160px 60px 80px',
         textAlign: 'center', position: 'relative', zIndex: 1,
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         overflow: 'hidden',
@@ -200,13 +215,13 @@ export default function DocsPage() {
         </div>
         <h1 style={{
           fontSize: mobile ? 28 : 48, fontWeight: 900,
-          letterSpacing: '-0.03em', margin: '0 auto 14px', maxWidth: 640,
+          letterSpacing: '-0.04em', margin: '0 auto 14px', maxWidth: 640,
         }}>
           Everything you need to know
         </h1>
         <p style={{
-          fontSize: mobile ? 14 : 16,
-          color: 'rgba(255,255,255,0.48)',
+          fontSize: mobile ? 15 : 18,
+          color: 'rgba(255,255,255,0.45)',
           maxWidth: 480, margin: '0 auto',
         }}>
           Guides, references, and examples for building with Reminisce.
@@ -253,7 +268,7 @@ export default function DocsPage() {
                   }}
                   style={{
                     textAlign: 'left', fontSize: 13,
-                    padding: '7px 12px', borderRadius: 8, border: 'none',
+                    padding: '9px 14px', borderRadius: 8, border: 'none',
                     borderLeft: !mobile ? `2px solid ${isAct ? ac : 'transparent'}` : 'none',
                     background: isAct ? hexToRgba(ac, 0.07) : 'transparent',
                     color: isAct ? ac : 'rgba(255,255,255,0.4)',
@@ -272,7 +287,7 @@ export default function DocsPage() {
         </aside>
 
         {/* Content */}
-        <div style={{ flex: 1, maxWidth: mobile ? '100%' : 720 }}>
+        <div style={{ flex: 1, maxWidth: mobile ? '100%' : 780 }}>
 
           {/* Introduction */}
           <section id="introduction" style={sectionGap}>
@@ -293,13 +308,13 @@ export default function DocsPage() {
           {/* Quick setup */}
           <section id="quick-setup" style={sectionGap}>
             <SectionHeader icon={Zap} title="Quick Setup"/>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {setupSteps.map((step, i) => (
                 <div key={i} style={{
                   display: 'flex', alignItems: 'flex-start', gap: 16,
                   background: 'rgba(255,255,255,0.025)',
                   border: '1px solid rgba(255,255,255,0.07)',
-                  borderRadius: 12, padding: '14px 20px',
+                  borderRadius: 12, padding: '16px 20px',
                 }}>
                   <div style={{
                     width: 28, height: 28, borderRadius: '50%',
@@ -518,7 +533,7 @@ export default function DocsPage() {
             <p style={{ ...prose, margin: '0 0 16px' }}>
               PAM is the conversational AI layer inside Reminisce. It knows your phases, features, git state, and context files. Use it for status updates, generating prompts, or getting architectural opinions.
             </p>
-            <div style={{
+            <ThreeDCard style={{
               background: 'rgba(4,4,16,0.8)',
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: 12, padding: '18px 22px', marginBottom: 16,
@@ -539,7 +554,7 @@ export default function DocsPage() {
                   <span style={{ color: 'rgba(255,255,255,0.4)' }}>{desc}</span>
                 </div>
               ))}
-            </div>
+            </ThreeDCard>
             <Note>
               <strong>Scope alerts:</strong> PAM monitors your <Code>product-scope.md</Code> and warns when a request diverges from the original blueprint — before it becomes scope creep.
             </Note>

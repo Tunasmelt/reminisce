@@ -144,14 +144,14 @@ export default function TemplateLibraryPage() {
     <div style={{
       display: 'flex',
       height: 'calc(100vh - 68px)',
-      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.03) 0%, transparent 40%), #07070f',
+      background: '#05050f',
       overflow: 'hidden',
     }}>
       <title>Reminisce — Template Library</title>
 
       {/* ── LEFT PANEL ──────────────────────── */}
       <div style={{
-        width: 300,
+        width: 380,
         flexShrink: 0,
         borderRight: '1px solid rgba(255,255,255,0.07)',
         display: 'flex',
@@ -167,72 +167,47 @@ export default function TemplateLibraryPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BookMarked size={14} color={accent} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{
-              fontSize: 11, fontWeight: 800,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.6)',
+              fontSize: 28, fontWeight: 800,
+              letterSpacing: '-0.03em',
+              color: '#fff',
             }}>
               Templates
-            </span>
-            <span style={{
-              fontSize: 9, fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: 999,
-              background: hexToRgba(accent, 0.1),
-              color: accent,
-              border: `1px solid ${hexToRgba(accent, 0.2)}`,
-            }}>
-              {templates.length}
             </span>
           </div>
           <button
             onClick={() => { setEditTarget(null); setShowCreate(true) }}
             style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '6px 12px',
-              background: accent, color: '#000',
-              border: 'none', borderRadius: 8,
-              fontSize: 10, fontWeight: 800,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              transition: 'opacity 0.15s',
+              background: accent, color: '#000', borderRadius: 999,
+              padding: '10px 22px', fontSize: 12, fontWeight: 800,
+              border: 'none', cursor: 'pointer',
+              boxShadow: `0 0 20px ${hexToRgba(accent, 0.3)}`,
+              transition: 'all 0.15s',
             }}
-            onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
           >
-            <Plus size={11} /> New
+            + New template
           </button>
         </div>
 
         {/* Search */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 10, padding: '8px 12px',
-          }}>
-            <Search size={11} color="rgba(255,255,255,0.3)" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search templates..."
-              style={{
-                flex: 1, background: 'transparent',
-                border: 'none', outline: 'none',
-                fontSize: 12, color: '#fff',
-              }}
-            />
-            {search && (
-              <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: 0 }}>
-                <X size={11} />
-              </button>
-            )}
-          </div>
+        <div style={{ padding: '16px 20px', position: 'relative' }}>
+          <Search size={14} color="rgba(255,255,255,0.3)" style={{ position: 'absolute', left: 34, top: 29 }} />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search templates..."
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.09)',
+              borderRadius: 14, padding: '11px 16px 11px 40px',
+              fontSize: 13, color: '#fff', outline: 'none',
+              width: '100%', boxSizing: 'border-box',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={e => e.currentTarget.style.borderColor = accent}
+            onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'}
+          />
         </div>
 
         {/* Categories */}
@@ -242,15 +217,16 @@ export default function TemplateLibraryPage() {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               style={{
-                padding: '3px 9px',
-                border: `1px solid ${activeCategory === cat ? hexToRgba(accent, 0.4) : 'rgba(255,255,255,0.07)'}`,
-                borderRadius: 6,
-                background: activeCategory === cat ? hexToRgba(accent, 0.1) : 'transparent',
-                color: activeCategory === cat ? accent : 'rgba(255,255,255,0.3)',
-                fontSize: 9, fontWeight: 700,
-                textTransform: 'uppercase',
-                cursor: 'pointer',
+                borderRadius: 999, padding: '6px 14px',
+                fontSize: 11, fontWeight: 700, cursor: 'pointer',
                 transition: 'all 0.15s',
+                border: activeCategory === cat 
+                  ? `1px solid ${hexToRgba(accent, 0.3)}` 
+                  : '1px solid rgba(255,255,255,0.08)',
+                background: activeCategory === cat 
+                  ? hexToRgba(accent, 0.12) 
+                  : 'rgba(255,255,255,0.04)',
+                color: activeCategory === cat ? accent : 'rgba(255,255,255,0.5)',
               }}
             >
               {cat === 'ALL' ? 'All' : (CATEGORY_META[cat]?.label || cat)}
@@ -274,7 +250,7 @@ export default function TemplateLibraryPage() {
         )}
 
         {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto' }} className="hide-scrollbar">
+        <div style={{ flex: 1, overflowY: 'auto', paddingTop: 16 }} className="hide-scrollbar">
           {loading ? (
             <div style={{ padding: 24, textAlign: 'center' }}>
               {[1,2,3].map(i => (
@@ -282,9 +258,15 @@ export default function TemplateLibraryPage() {
               ))}
             </div>
           ) : templates.length === 0 ? (
-            <div style={{ padding: '48px 20px', textAlign: 'center' }}>
-              <BookMarked size={28} color={hexToRgba(accent, 0.2)} style={{ margin: '0 auto 12px' }} />
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', lineHeight: 1.6 }}>
+            <div style={{
+              textAlign: 'center', padding: '80px 32px',
+              border: '1px dashed rgba(255,255,255,0.08)',
+              borderRadius: 20,
+              margin: '24px 16px',
+              color: 'rgba(255,255,255,0.25)',
+            }}>
+              <BookMarked size={28} color="rgba(255,255,255,0.1)" style={{ margin: '0 auto 12px' }} />
+              <div style={{ fontSize: 13, lineHeight: 1.6 }}>
                 No templates yet.<br />Create your first one.
               </div>
             </div>
@@ -296,46 +278,57 @@ export default function TemplateLibraryPage() {
                 key={t.id}
                 onClick={() => setSelected(t)}
                 style={{
-                  padding: '14px 16px',
-                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  background: isSelected ? hexToRgba(accent, 0.08) : 'rgba(255,255,255,0.025)',
+                  border: isSelected ? `1px solid ${accent}` : '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 18, 
+                  padding: '22px 24px',
                   cursor: 'pointer',
-                  background: isSelected ? hexToRgba(accent, 0.06) : 'transparent',
-                  borderLeft: `3px solid ${isSelected ? accent : 'transparent'}`,
-                  transition: 'all 0.15s',
+                  transition: 'all 0.2s',
+                  margin: '0 16px 12px',
                 }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.borderColor = hexToRgba(accent, isSelected ? 1 : 0.2)
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.borderColor = isSelected ? accent : 'rgba(255,255,255,0.07)'
+                }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', flex: 1, lineHeight: 1.3 }}>{t.title}</span>
                   <span style={{
-                    fontSize: 8, fontWeight: 800,
+                    background: hexToRgba(meta?.color || '#6b7280', 0.1),
+                    border: '1px solid ' + hexToRgba(meta?.color || '#6b7280', 0.25),
                     color: meta?.color || '#6b7280',
-                    background: `${meta?.color || '#6b7280'}18`,
-                    padding: '2px 6px', borderRadius: 4,
-                    border: `1px solid ${meta?.color || '#6b7280'}30`,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
+                    borderRadius: 999, padding: '2px 9px',
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
                     flexShrink: 0,
                   }}>
                     {meta?.label || t.category}
                   </span>
                 </div>
                 <div style={{
-                  fontSize: 11, color: 'rgba(255,255,255,0.35)',
+                  fontSize: 12, color: 'rgba(255,255,255,0.42)',
                   overflow: 'hidden',
                   display: '-webkit-box',
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical',
-                  lineHeight: 1.5,
-                  marginBottom: t.tags?.length ? 6 : 0,
+                  lineHeight: 1.6,
+                  marginBottom: t.tags?.length ? 10 : 0,
                 }}>
                   {t.content}
                 </div>
                 {t.tags?.length > 0 && (
-                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {t.tags.slice(0, 3).map(tag => (
-                      <span key={tag} style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.04)', padding: '1px 5px', borderRadius: 3 }}>#{tag}</span>
+                      <span key={tag} style={{ 
+                        background: 'rgba(255,255,255,0.05)', 
+                        borderRadius: 999, 
+                        padding: '2px 8px', 
+                        fontSize: 10,
+                        color: 'rgba(255,255,255,0.4)' 
+                      }}>#{tag}</span>
                     ))}
                   </div>
                 )}
@@ -433,15 +426,14 @@ export default function TemplateLibraryPage() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
                     padding: '7px 14px',
+                    background: 'rgba(255,255,255,0.05)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'rgba(255,255,255,0.6)',
-                    background: 'rgba(255,255,255,0.04)',
                     borderRadius: 8, fontSize: 10,
-                    fontWeight: 700, cursor: 'pointer',
-                    transition: 'all 0.15s',
+                    fontWeight: 700, color: 'rgba(255,255,255,0.6)',
+                    cursor: 'pointer', transition: 'all 0.15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'; e.currentTarget.style.color = '#fff' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }}
                 >
                   <Copy size={11} /> Copy
                 </button>
@@ -465,15 +457,13 @@ export default function TemplateLibraryPage() {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 5,
                     padding: '7px 12px',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                    color: 'rgba(239,68,68,0.6)',
-                    background: 'transparent',
+                    background: 'rgba(248,113,113,0.08)',
+                    border: '1px solid rgba(248,113,113,0.2)',
+                    color: '#f87171',
                     borderRadius: 8, fontSize: 10,
                     fontWeight: 700, cursor: 'pointer',
                     transition: 'all 0.15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'; e.currentTarget.style.color = 'rgba(239,68,68,0.6)' }}
                 >
                   <Trash2 size={11} />
                 </button>
@@ -547,11 +537,11 @@ function TemplateEditorModal({ onClose, onSave, initialData, accent }: EditorMod
     }}>
       <div style={{
         width: 580,
-        background: 'rgba(10,10,24,0.98)',
+        background: 'rgba(8,8,22,0.98)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: 20, padding: 36,
         position: 'relative',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.8)',
       }}>
         <button onClick={onClose} style={{ position: 'absolute', top: 18, right: 18, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '4px 6px', display: 'flex' }}>
           <X size={16} />
@@ -580,7 +570,20 @@ function TemplateEditorModal({ onClose, onSave, initialData, accent }: EditorMod
           </div>
           <div>
             <label style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'block' }}>Content</label>
-            <textarea value={content} onChange={e => setContent(e.target.value)} style={{ width: '100%', height: 180, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: '#fff', outline: 'none', resize: 'none', fontFamily: 'ui-monospace, monospace', fontSize: 12, lineHeight: 1.6, boxSizing: 'border-box' }} />
+            <textarea 
+              value={content} 
+              onChange={e => setContent(e.target.value)} 
+              style={{ 
+                width: '100%', height: 180, 
+                background: 'rgba(255,255,255,0.03)', 
+                border: '1px solid rgba(255,255,255,0.08)', 
+                borderRadius: 12, padding: '14px 16px', 
+                fontFamily: 'ui-monospace, monospace', 
+                fontSize: 12, lineHeight: 1.7, color: '#fff', 
+                outline: 'none', resize: 'none', 
+                boxSizing: 'border-box' 
+              }} 
+            />
           </div>
         </div>
         <button

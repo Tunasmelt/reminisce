@@ -4,6 +4,8 @@ import { getServiceSupabase,
   from '@/lib/supabase'
 import { canCreateProject } from '@/lib/wallet'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization')
@@ -50,6 +52,28 @@ export async function POST(req: Request) {
     }
     
     const supabase = getServiceSupabase()
+
+    // ── Ownership check: verify this workspace belongs to the caller ──────
+    const { data: ws, error: wsErr } = await supabase
+      .from('workspaces')
+      .select('id, owner_id')
+      .eq('id', workspaceId)
+      .single()
+
+    if (wsErr || !ws) {
+      return NextResponse.json(
+        { error: 'Workspace not found' },
+        { status: 404 }
+      )
+    }
+
+    if (ws.owner_id !== user.id) {
+      return NextResponse.json(
+        { error: 'Forbidden: workspace does not belong to you' },
+        { status: 403 }
+      )
+    }
+
     const { data, error } = await supabase
       .from('projects')
       .insert({

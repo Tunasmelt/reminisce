@@ -5,12 +5,21 @@ import { ProtectedRoute } from '@/components/protected-route'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Star, LogOut } from 'lucide-react'
-import ThemeToggle from '@/components/theme-toggle'
+import { LogOut } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
+import ReminisceLogo from '@/components/ReminisceLogo'
 import { User } from '@supabase/supabase-js'
 import { toast } from 'sonner'
 import { getTimeUntilUTCReset } from '@/lib/wallet'
+import ThemeToggle from '@/components/theme-toggle'
+
+function hexToRgba(hex: string, a: number) {
+  if (!hex || hex.length < 7) return `rgba(245,158,11,${a})`
+  const r = parseInt(hex.slice(1,3),16)
+  const g = parseInt(hex.slice(3,5),16)
+  const b = parseInt(hex.slice(5,7),16)
+  return `rgba(${r},${g},${b},${a})`
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -126,16 +135,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }}>
           {/* Left: Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-            <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Star size={14} fill={accent} stroke={accent} />
-              <span style={{ 
-                fontSize: 15, 
-                fontWeight: 700, 
-                letterSpacing: '0.01em', 
-                color: '#fff' 
-              }}>
-                {isMobile ? '★' : 'Reminisce'}
-              </span>
+            <Link href="/dashboard" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <ReminisceLogo size={20} color="#ffffff" glowColor={hexToRgba(accent, 0.4)}/>
+              {!isMobile && (
+                <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.01em', color: '#fff' }}>
+                  Reminisce
+                </span>
+              )}
             </Link>
             
             {!isMobile && (
@@ -151,6 +157,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   alignItems: 'center',
                   gap: 4,
                   marginLeft: 0,
+                  whiteSpace: 'nowrap' as const,
                 }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)'}
@@ -222,38 +229,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {/* Wallet */}
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8, padding: '6px 14px',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 999,
-                    fontSize: 13, cursor: 'default',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '6px 14px',
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 999, cursor: 'default',
                   }}
-                  title={`${wallet.coins} coins — resets ${resetLabel} · ${wallet.gems} gems (premium)`}
+                  title={`${wallet.coins} coins — resets ${resetLabel} · ${wallet.gems} gems`}
                 >
-                  <span style={{
-                    display: 'flex',
-                    alignItems: 'center', gap: 3,
-                    color: 'rgba(255,255,255,0.5)',
-                    fontWeight: 600,
-                  }}>
-                    🪙 {wallet.coins}
+                  <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.55)' }}>
+                    🪙 <span style={{ color:'#fff' }}>{wallet.coins}</span>
                   </span>
-                  <>
-                    <span style={{
-                      color: 'rgba(255,255,255,0.15)',
-                      fontSize: 10,
-                    }}>·</span>
-                    <span style={{
-                      display: 'flex',
-                      alignItems: 'center', gap: 3,
-                      color: userPlan === 'pro' ? '#a78bfa' : 'rgba(255,255,255,0.3)',
-                      fontWeight: 600,
-                    }}>
-                      💎 {wallet.gems}
-                    </span>
-                  </>
+                  <div style={{ width:1, height:12, background:'rgba(255,255,255,0.1)' }}/>
+                  <span style={{ display:'flex', alignItems:'center', gap:5, fontSize:12, fontWeight:700, color: userPlan === 'pro' ? '#a78bfa' : 'rgba(255,255,255,0.35)' }}>
+                    💎 <span>{wallet.gems}</span>
+                  </span>
                 </div>
                 {/* Upgrade button for free users */}
                 {userPlan === 'free' && (
@@ -265,8 +255,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       fontSize: 10, fontWeight: 700,
                       padding: '4px 10px',
                       borderRadius: 999,
-                      border: `1px solid ${accent}60`,
-                      background: `${accent}15`,
+                      border: `1px solid ${hexToRgba(accent, 0.35)}`,
+                      background: hexToRgba(accent, 0.1),
                       color: accent,
                       cursor: 'pointer',
                       letterSpacing: '0.04em',
@@ -274,11 +264,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     }}
                     onMouseEnter={e => {
                       e.currentTarget.style.background = 
-                        `${accent}25`
+                        hexToRgba(accent, 0.2)
                     }}
                     onMouseLeave={e => {
                       e.currentTarget.style.background = 
-                        `${accent}15`
+                        hexToRgba(accent, 0.1)
                     }}
                   >
                     Upgrade →
@@ -286,14 +276,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
               </div>
             )}
-            <ThemeToggle />
             
+            <ThemeToggle />
+
             <div style={{
               width: 32,
               height: 32,
               borderRadius: '50%',
-              background: `rgba(${parseInt(accent.slice(1,3),16)},${parseInt(accent.slice(3,5),16)},${parseInt(accent.slice(5,7),16)}, 0.15)`,
-              border: `1px solid rgba(${parseInt(accent.slice(1,3),16)},${parseInt(accent.slice(3,5),16)},${parseInt(accent.slice(5,7),16)}, 0.3)`,
+              background: hexToRgba(accent, 0.15),
+              border: `1px solid ${hexToRgba(accent, 0.3)}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

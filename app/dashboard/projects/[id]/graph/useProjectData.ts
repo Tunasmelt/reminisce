@@ -60,7 +60,7 @@ export interface UseProjectDataReturn {
     featureId: string,
     updates: Partial<Pick<
       Feature,
-      'name' | 'description' | 'status' | 'type' | 'priority'
+      'name' | 'description' | 'status' | 'type' | 'priority' | 'phase_id'
     >>
   ) => Promise<void>
 
@@ -294,7 +294,7 @@ export function useProjectData(
       featureId: string,
       updates: Partial<Pick<
         Feature,
-        'name' | 'description' | 'status' | 'type' | 'priority'
+        'name' | 'description' | 'status' | 'type' | 'priority' | 'phase_id'
       >>
     ): Promise<void> => {
       try {

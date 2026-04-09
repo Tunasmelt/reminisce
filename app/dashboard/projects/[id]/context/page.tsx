@@ -5,9 +5,21 @@ import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useTheme } from '@/hooks/useTheme'
-import DiffViewer from '@/components/DiffViewer'
+import dynamic from 'next/dynamic'
+const DiffViewer = dynamic(() => import('@/components/DiffViewer'), {
+  ssr: false,
+  loading: () => (
+    <div style={{
+      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: 'rgba(255,255,255,0.3)', fontSize: 12,
+    }}>
+      Loading diff…
+    </div>
+  ),
+})
 import CustomSelect from '@/components/CustomSelect'
 import { downloadFile } from '@/lib/exportBrief'
+import { estimateTokens } from '@/lib/stream-parser'
 import { useFileSystem } from '@/hooks/useFileSystem'
 import { FolderOpen, Upload, Download, GitBranch, AlertTriangle, Check } from 'lucide-react'
 
@@ -98,6 +110,17 @@ export default function ContextPage() {
   const [showSyncConfirm,  setShowSyncConfirm]  = useState(false)
   const [isSyncing,        setIsSyncing]        = useState(false)
   const [isPushing,        setIsPushing]        = useState(false)
+
+  // ── Mobile detection ────────────────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobilePanel, setMobilePanel] = useState<'files' | 'editor' | 'history'>('editor')
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // ── Load all context files ─────────────────────────────────────────────────
   const loadFiles = useCallback(async () => {
@@ -254,28 +277,63 @@ export default function ContextPage() {
     c => c.filePath === selectedFile?.file_path,
   )
 
-  // Version options for diff picker
-  const versionOptions = versions.map((v, i) => ({
-    value: v.id,
-    label: `v${versions.length - i} — ${new Date(v.changed_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
-  }))
+  // Diff options for the version picker
+  const diffOptions = [
+    { value: 'db',    label: 'Database (current)' },
+    { value: 'local', label: 'Local file' },
+    ...versions.map((v, i) => ({
+      value: v.id,
+      label: `v${versions.length - i} — ${new Date(v.changed_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+    })),
+  ]
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{
-      display: 'flex', height: 'calc(100vh - 68px)',
-      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
-      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      height: isMobile ? 'auto' : 'calc(100vh - 68px)',
+      minHeight: isMobile ? '100vh' : undefined,
+      background: '#05050f',
+      overflow: isMobile ? 'auto' : 'hidden',
     }}>
       <title>{`Reminisce — Context — ${project?.name ?? ''}`}</title>
+
+      {/* ── Mobile panel tabs ───────────────────────────────── */}
+      {isMobile && (
+        <div style={{
+          display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)',
+          background: 'rgba(8,8,20,0.8)', flexShrink: 0,
+          position: 'sticky', top: 0, zIndex: 10,
+          backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+        }}>
+          {(['files', 'editor', 'history'] as const).map(panel => (
+            <button key={panel} onClick={() => setMobilePanel(panel)} style={{
+              flex: 1, padding: '14px 0', background: 'transparent', border: 'none',
+              borderBottom: mobilePanel === panel ? `2px solid ${accent}` : '2px solid transparent',
+              color: mobilePanel === panel ? '#fff' : 'rgba(255,255,255,0.4)',
+              fontSize: 11, fontWeight: mobilePanel === panel ? 700 : 500,
+              cursor: 'pointer', marginBottom: -1, textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}>
+              {panel}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════
           LEFT — File tree (240px)
       ═══════════════════════════════════════ */}
       <div style={{
-        width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column',
-        borderRight: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(255,255,255,0.02)',
+        display: isMobile && mobilePanel !== 'files' ? 'none' : 'flex',
+        width: isMobile ? '100%' : 240,
+        flexShrink: 0, flexDirection: 'column',
+        borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(8,8,20,0.6)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        height: isMobile ? 'calc(100vh - 120px)' : undefined,
       }}>
         {/* File tree header */}
         <div style={{
@@ -291,7 +349,7 @@ export default function ContextPage() {
 
           {/* Git state bar */}
           {gitState.branch && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, padding: '5px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, padding: '8px 12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10 }}>
               <GitBranch size={10} color="rgba(255,255,255,0.3)" />
               <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {gitState.branch}
@@ -343,7 +401,12 @@ export default function ContextPage() {
           ) : (
             Object.entries(grouped).map(([folder, files]) => (
               <div key={folder} style={{ marginBottom: 4 }}>
-                <div style={{ padding: '5px 16px', fontSize: 8, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,0.2)',
+                  padding: '12px 12px 4px',
+                }}>
                   {folder}/
                 </div>
                 {files.map(f => {
@@ -355,14 +418,16 @@ export default function ContextPage() {
                       key={f.id}
                       onClick={() => { setSelectedFile(f); setIsEditing(false) }}
                       style={{
-                        padding: '7px 16px 7px 20px',
+                        padding: '7px 12px',
                         cursor: 'pointer',
-                        background: isSelected ? hexToRgba(accent, 0.08) : 'transparent',
-                        borderLeft: `2px solid ${isSelected ? accent : 'transparent'}`,
+                        background: isSelected ? hexToRgba(accent, 0.1) : 'transparent',
+                        border: `1px solid ${isSelected ? hexToRgba(accent, 0.2) : 'transparent'}`,
+                        borderRadius: 8,
                         display: 'flex', alignItems: 'center', gap: 8,
-                        transition: 'all 0.1s',
+                        margin: '0 8px 1px',
+                        transition: 'all 0.15s',
                       }}
-                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
                       onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -402,19 +467,27 @@ export default function ContextPage() {
       {/* ═══════════════════════════════════════
           CENTRE — File editor (flex: 3)
       ═══════════════════════════════════════ */}
-      <div style={{ flex: 3, display: 'flex', flexDirection: 'column', minWidth: 0, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{
+        flex: isMobile ? 'none' : 3,
+        display: isMobile && mobilePanel !== 'editor' ? 'none' : 'flex',
+        flexDirection: 'column', minWidth: 0,
+        width: isMobile ? '100%' : undefined,
+        minHeight: isMobile ? 'calc(100vh - 120px)' : undefined,
+        borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.07)',
+        background: 'transparent'
+      }}>
 
         {/* Editor header */}
         <div style={{
-          height: 52, flexShrink: 0,
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          background: 'rgba(8,8,20,0.6)',
+          height: 48, flexShrink: 0,
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          background: 'rgba(8,8,20,0.5)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '0 20px', gap: 12,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, alignSelf: 'stretch' }}>
             {selectedFile && (
               <>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
@@ -440,27 +513,45 @@ export default function ContextPage() {
 
           {/* Editor controls */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-            {selectedFile && !isEditing && (
-              <button
-                onClick={() => { setShowDiff(!showDiff); setIsEditing(false) }}
-                style={{ padding: '5px 12px', background: showDiff ? hexToRgba(accent, 0.1) : 'transparent', border: `1px solid ${showDiff ? hexToRgba(accent, 0.4) : 'rgba(255,255,255,0.1)'}`, borderRadius: 7, cursor: 'pointer', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: showDiff ? accent : 'rgba(255,255,255,0.4)' }}
-              >
-                Diff
-              </button>
-            )}
-            {/* Edit / View toggle */}
-            {selectedFile && selectedFile.owned_by !== 'developer' && (
-              <div style={{ display: 'flex', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 7, overflow: 'hidden' }}>
-                {(['view', 'edit'] as const).map(mode => {
-                  const active = (mode === 'edit') === isEditing
+            {selectedFile && (
+              <div style={{ display: 'flex', gap: 20, alignSelf: 'stretch' }}>
+                <button
+                  onClick={() => { setShowDiff(!showDiff); setIsEditing(false) }}
+                  style={{
+                    padding: '13px 0',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: showDiff ? `2px solid ${accent}` : '2px solid transparent',
+                    color: showDiff ? '#fff' : 'rgba(255,255,255,0.4)',
+                    fontSize: 12, fontWeight: showDiff ? 700 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    marginBottom: -1,
+                  }}
+                >
+                  Diff
+                </button>
+                {selectedFile.owned_by !== 'developer' && (['view', 'edit'] as const).map(mode => {
+                  const active = (mode === 'edit') === isEditing && !showDiff
                   return (
                     <button
                       key={mode}
                       onClick={() => {
                         if (mode === 'edit') { setShowDiff(false); setIsEditing(true); setEditableContent(selectedFile.content ?? '') }
-                        else { setIsEditing(false) }
+                        else { setIsEditing(false); setShowDiff(false) }
                       }}
-                      style={{ padding: '5px 14px', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', border: 'none', borderRight: mode === 'view' ? '1px solid rgba(255,255,255,0.1)' : 'none', background: active ? 'rgba(255,255,255,0.08)' : 'transparent', color: active ? '#fff' : 'rgba(255,255,255,0.35)', cursor: 'pointer', transition: 'all 0.15s' }}
+                      style={{
+                        padding: '13px 0',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: active ? `2px solid ${accent}` : '2px solid transparent',
+                        color: active ? '#fff' : 'rgba(255,255,255,0.4)',
+                        fontSize: 12, fontWeight: active ? 700 : 400,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        marginBottom: -1,
+                        textTransform: 'capitalize',
+                      }}
                     >
                       {mode}
                     </button>
@@ -469,20 +560,67 @@ export default function ContextPage() {
               </div>
             )}
             {isEditing && (
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                style={{ background: isSaving ? 'rgba(255,255,255,0.1)' : accent, color: isSaving ? 'rgba(255,255,255,0.3)' : '#000', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: isSaving ? 'not-allowed' : 'pointer' }}
-              >
-                {isSaving ? 'Saving…' : 'Save'}
-              </button>
+              <>
+                {/* Token count indicator */}
+                {(() => {
+                  const tokens     = estimateTokens(editableContent)
+                  const limit      = 8000
+                  const pct        = Math.min(tokens / limit, 1)
+                  const color      = pct < 0.6
+                    ? '#34d399'   // green — safe
+                    : pct < 0.85
+                    ? '#f59e0b'   // amber — getting full
+                    : '#f87171'  // red — near limit
+                  return (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '4px 10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${color}30`,
+                      borderRadius: 999,
+                      flexShrink: 0,
+                    }}>
+                      {/* Mini progress arc */}
+                      <svg width={14} height={14} viewBox="0 0 14 14">
+                        <circle cx={7} cy={7} r={5} fill="none"
+                          stroke="rgba(255,255,255,0.1)" strokeWidth={2}/>
+                        <circle cx={7} cy={7} r={5} fill="none"
+                          stroke={color} strokeWidth={2}
+                          strokeDasharray={`${pct * 31.4} 31.4`}
+                          strokeLinecap="round"
+                          transform="rotate(-90 7 7)"
+                          style={{ transition: 'stroke-dasharray 0.2s, stroke 0.2s' }}
+                        />
+                      </svg>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700,
+                        color, fontVariantNumeric: 'tabular-nums',
+                        letterSpacing: '0.02em',
+                      }}>
+                        {tokens.toLocaleString()}
+                        <span style={{ color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}>
+                          /{limit.toLocaleString()}
+                        </span>
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  style={{ background: isSaving ? 'rgba(255,255,255,0.1)' : accent, color: isSaving ? 'rgba(255,255,255,0.3)' : '#000', border: 'none', borderRadius: 7, padding: '6px 16px', fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: isSaving ? 'not-allowed' : 'pointer' }}
+                >
+                  {isSaving ? 'Saving…' : 'Save'}
+                </button>
+              </>
             )}
           </div>
         </div>
 
         {/* Conflict resolution banner */}
         {pendingForSelected && !showDiff && (
-          <div style={{ padding: '10px 20px', background: 'rgba(245,158,11,0.08)', borderBottom: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ padding: '10px 20px', background: 'rgba(245,158,11,0.06)', borderBottom: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <AlertTriangle size={13} color="#f59e0b" />
               <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>
@@ -512,39 +650,50 @@ export default function ContextPage() {
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>
               Select a file from the left panel
             </div>
-          ) : showDiff && versions.length >= 2 ? (
+          ) : showDiff && (versions.length >= 2 || pendingForSelected) ? (
             <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
               <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
-                <CustomSelect value={diffFrom} onChange={setDiffFrom} options={versionOptions} width={220} compact />
+                <CustomSelect value={diffFrom} onChange={setDiffFrom} options={diffOptions} width={220} compact />
                 <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>→</span>
-                <CustomSelect value={diffTo} onChange={setDiffTo} options={versionOptions} width={220} compact />
+                <CustomSelect value={diffTo} onChange={setDiffTo} options={diffOptions} width={220} compact />
               </div>
               {diffFrom && diffTo && diffFrom !== diffTo && (() => {
-                // When comparing local vs DB
-                if (diffFrom === 'local' && pendingForSelected) {
-                  return <DiffViewer
-                    oldContent={pendingForSelected.dbContent}
-                    newContent={pendingForSelected.localContent}
-                    oldLabel="Reminisce (DB)"
-                    newLabel="Local file"
-                  />
+                const getCont = (id: string) => {
+                  if (id === 'db')    return selectedFile?.content || ''
+                  if (id === 'local') return pendingForSelected?.localContent || ''
+                  return versions.find(v => v.id === id)?.content || ''
                 }
-                const fromV = versions.find(v => v.id === diffFrom)
-                const toV   = versions.find(v => v.id === diffTo)
-                if (!fromV || !toV) return null
-                return <DiffViewer
-                  oldContent={fromV.content}
-                  newContent={toV.content}
-                  oldLabel={`v${versions.indexOf(fromV) + 1} (older)`}
-                  newLabel={`v${versions.indexOf(toV) + 1} (newer)`}
-                />
+                const getLab = (id: string) => {
+                  if (id === 'db')    return 'Reminisce (DB)'
+                  if (id === 'local') return 'Local file'
+                  const idx = versions.findIndex(v => v.id === id)
+                  return idx !== -1 ? `v${versions.length - idx}` : 'Unknown'
+                }
+
+                return (
+                  <DiffViewer
+                    oldContent={getCont(diffFrom)}
+                    newContent={getCont(diffTo)}
+                    oldLabel={getLab(diffFrom)}
+                    newLabel={getLab(diffTo)}
+                  />
+                )
               })()}
             </div>
           ) : isEditing ? (
             <textarea
               value={editableContent}
               onChange={e => setEditableContent(e.target.value)}
-              style={{ flex: 1, width: '100%', background: 'rgba(255,255,255,0.02)', border: 'none', outline: 'none', resize: 'none', padding: '24px 28px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: 'rgba(255,255,255,0.85)', lineHeight: 1.75, boxSizing: 'border-box' }}
+              style={{
+                flex: 1, width: '100%',
+                background: 'rgba(255,255,255,0.025)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 0,
+                padding: '20px 24px',
+                fontSize: 13, fontFamily: 'ui-monospace, monospace', lineHeight: 1.7,
+                color: '#fff', outline: 'none',
+                resize: 'none', boxSizing: 'border-box'
+              }}
               placeholder="Edit context file content…"
               spellCheck={false}
             />
@@ -584,7 +733,14 @@ export default function ContextPage() {
       {/* ═══════════════════════════════════════
           RIGHT — Version history (240px)
       ═══════════════════════════════════════ */}
-      <div style={{ width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{
+        display: isMobile && mobilePanel !== 'history' ? 'none' : 'flex',
+        width: isMobile ? '100%' : 240,
+        flexShrink: 0, flexDirection: 'column',
+        background: 'rgba(8,8,20,0.5)',
+        borderLeft: isMobile ? 'none' : '1px solid rgba(255,255,255,0.07)',
+        height: isMobile ? 'calc(100vh - 120px)' : undefined,
+      }}>
 
         {/* Right header */}
         <div style={{ height: 52, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(8,8,20,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
@@ -611,9 +767,22 @@ export default function ContextPage() {
               <div
                 key={v.id}
                 onClick={() => { setEditableContent(v.content); setIsEditing(false) }}
-                style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', flexDirection: 'column', gap: 3, transition: 'background 0.1s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                style={{
+                  padding: '10px 14px', cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.025)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 10,
+                  margin: '0 8px 6px',
+                  display: 'flex', flexDirection: 'column', gap: 3, transition: 'all 0.15s'
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                  e.currentTarget.style.borderColor = hexToRgba(accent, 0.2)
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.025)'
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
+                }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: i === 0 ? accent : 'rgba(255,255,255,0.5)' }}>

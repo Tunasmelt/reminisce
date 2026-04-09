@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/pam/reminders?projectId=xxx
 // Returns all non-done reminders for a project, sorted by due_date.
 export async function GET(req: Request) {

@@ -9,7 +9,9 @@ import {
   FlaskConical, Settings, ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useTheme } from '@/hooks/useTheme'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { supabase } from '@/lib/supabase'
 
 function hexToRgba(hex: string, a: number) {
@@ -23,11 +25,33 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const params = useParams()
   const pathname = usePathname()
   const { accent } = useTheme()
+  const router = useRouter()
   const projectId = params.id as string
   const [projectName, setProjectName] = useState('')
   const [pamReminderCount, setPamReminderCount] = useState(0)
 
   const [collapsed, setCollapsed] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
+      const isInput = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable
+      if (e.key === '?' && !isInput && !e.metaKey && !e.ctrlKey) {
+        setShowShortcuts(v => !v)
+      }
+      if (e.key === 'Escape') setShowShortcuts(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  useKeyboardShortcuts({
+    onGoToDashboard: () => router.push('/dashboard'),
+    onGoToBoard:     () => router.push(`/dashboard/projects/${projectId}/board`),
+    onGoToPam:       () => router.push(`/dashboard/projects/${projectId}/agent`),
+    onGoToWizard:    () => router.push(`/dashboard/projects/${projectId}/wizard`),
+  })
   // Persist to localStorage
   useEffect(() => {
     const saved = localStorage.getItem(
@@ -123,7 +147,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
         bottom: 0,
         width: sidebarW,
         height: 'calc(100vh - 68px)',
-        background: 'rgba(8,8,20,0.85)',
+        background: 'rgba(8,8,20,0.95)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         borderRight: '1px solid rgba(255,255,255,0.08)',
@@ -142,7 +166,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           alignItems: 'center',
           gap: 8,
           justifyContent: collapsed ? 'center' : 'flex-start',
-          minHeight: 56,
+          minHeight: 64,
           flexShrink: 0,
         }}>
           {!collapsed && (
@@ -222,7 +246,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                     : '9px 12px',
                   justifyContent: collapsed 
                     ? 'center' : 'flex-start',
-                  borderRadius: collapsed ? 0 : 8,
+                  borderRadius: collapsed ? 0 : 9,
                   marginBottom: 2,
                   background: isActive
                     ? hexToRgba(accent, 0.12)
@@ -248,7 +272,7 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
                 onMouseEnter={(e: React.MouseEvent) => {
                   if (!isActive) {
                     (e.currentTarget as HTMLElement).style.background 
-                      = 'rgba(255,255,255,0.06)';
+                      = 'rgba(255,255,255,0.05)';
                     (e.currentTarget as HTMLElement).style.color = '#fff'
                   }
                 }}
@@ -283,56 +307,181 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
           })}
         </nav>
 
-        {/* Collapse button only — ThemeToggle removed from sidebar */}
+        {/* Sidebar footer: shortcuts + collapse */}
         <div style={{
           borderTop: '1px solid rgba(255,255,255,0.06)',
-          padding: collapsed ? '8px 0' : '8px',
+          padding: collapsed ? '8px 0' : '6px 8px',
           flexShrink: 0,
           display: 'flex',
+          flexDirection: collapsed ? 'column' : 'row',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
+          justifyContent: collapsed ? 'center' : 'space-between',
+          gap: 4,
         }}>
+          {/* ? Shortcuts button — hidden when collapsed */}
+          {!collapsed && (
+            <button
+              onClick={() => setShowShortcuts(true)}
+              title="Keyboard shortcuts (?)"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 10px', borderRadius: 8, border: 'none',
+                background: 'transparent',
+                color: 'rgba(255,255,255,0.2)',
+                cursor: 'pointer', fontSize: 11,
+                transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)'
+                ;(e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.2)'
+                ;(e.currentTarget as HTMLElement).style.background = 'transparent'
+              }}
+            >
+              <span style={{
+                width: 16, height: 16, borderRadius: 4,
+                border: '1px solid rgba(255,255,255,0.18)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 700, lineHeight: 1, flexShrink: 0,
+              }}>?</span>
+              <span>Shortcuts</span>
+            </button>
+          )}
+
+          {/* Collapse button */}
           <button
             onClick={toggleCollapse}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: collapsed 
-                ? 'center' : 'flex-start',
+              display: 'flex', alignItems: 'center',
+              justifyContent: collapsed ? 'center' : 'flex-start',
               gap: 8,
-              padding: collapsed ? '8px' : '8px 12px',
-              background: 'transparent',
-              border: 'none',
+              padding: collapsed ? '8px' : '6px 10px',
+              background: 'transparent', border: 'none',
               borderRadius: 8,
               color: 'rgba(255,255,255,0.25)',
-              cursor: 'pointer',
-              fontSize: 12,
+              cursor: 'pointer', fontSize: 12,
               transition: 'all 0.15s',
-              width: collapsed ? 36 : '100%',
+              width: collapsed ? 36 : 'auto',
               alignSelf: collapsed ? 'center' : 'auto',
             }}
             onMouseEnter={(e: React.MouseEvent) => {
-              (e.currentTarget as HTMLElement).style.color = '#fff';
-              (e.currentTarget as HTMLElement).style.background 
-                = 'rgba(255,255,255,0.06)'
+              (e.currentTarget as HTMLElement).style.color = '#fff'
+              ;(e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'
             }}
             onMouseLeave={(e: React.MouseEvent) => {
-              (e.currentTarget as HTMLElement).style.color 
-                = 'rgba(255,255,255,0.25)';
-              (e.currentTarget as HTMLElement).style.background 
-                = 'transparent'
+              (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)'
+              ;(e.currentTarget as HTMLElement).style.background = 'transparent'
             }}
           >
-            {collapsed 
+            {collapsed
               ? <ChevronRight size={14} />
-              : <>
-                  <ChevronLeft size={14} />
-                  Collapse
-                </>
+              : <><ChevronLeft size={14} />Collapse</>
             }
           </button>
         </div>
       </aside>
+
+      {/* Shortcuts modal */}
+      {showShortcuts && (
+        <>
+          <div
+            onClick={() => setShowShortcuts(false)}
+            style={{
+              position: 'fixed', inset: 0,
+              background: 'rgba(0,0,0,0.55)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 200,
+            }}
+          />
+          <div style={{
+            position: 'fixed',
+            bottom: 76,
+            left: collapsed ? 60 : 228,
+            width: 296,
+            background: 'rgba(8,8,22,0.97)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 16,
+            padding: '20px 20px 16px',
+            zIndex: 201,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(24px)',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', marginBottom: 16,
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                Keyboard shortcuts
+              </span>
+              <button
+                onClick={() => setShowShortcuts(false)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'rgba(255,255,255,0.4)', fontSize: 16, padding: 2,
+                  lineHeight: 1,
+                }}
+              >✕</button>
+            </div>
+
+            {([
+              { section: 'Navigation' },
+              { key: '⌘ H',   desc: 'Go to Dashboard'    },
+              { key: '⌘ P',   desc: 'Go to PAM'          },
+              { key: '⌘ B',   desc: 'Go to Board'        },
+              { key: '⌘ W',   desc: 'Go to Wizard'       },
+              { section: 'Wizard' },
+              { key: '⌘ G',   desc: 'Generate blueprint' },
+              { key: 'Enter', desc: 'Send message'        },
+              { key: 'Esc',   desc: 'Close modal'         },
+              { section: 'PAM' },
+              { key: 'Enter',   desc: 'Send message'      },
+              { key: '⇧ Enter', desc: 'New line'          },
+              { key: 'Esc',     desc: 'Dismiss action'    },
+              { section: 'General' },
+              { key: '?',   desc: 'Toggle shortcuts'      },
+              { key: 'Esc', desc: 'Close modals'          },
+            ] as Array<{ section?: string; key?: string; desc?: string }>).map((item, i) => {
+              if (item.section) {
+                return (
+                  <div key={i} style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
+                    textTransform: 'uppercase' as const,
+                    color: 'rgba(255,255,255,0.22)',
+                    marginBottom: 6, marginTop: i === 0 ? 0 : 12,
+                  }}>
+                    {item.section}
+                  </div>
+                )
+              }
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '5px 0',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                }}>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                    {item.desc}
+                  </span>
+                  <kbd style={{
+                    fontSize: 10, fontWeight: 600,
+                    padding: '2px 7px', borderRadius: 5,
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.13)',
+                    color: 'rgba(255,255,255,0.55)',
+                    fontFamily: 'ui-monospace, monospace',
+                    whiteSpace: 'nowrap' as const,
+                  }}>
+                    {item.key}
+                  </kbd>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
 
       {/* MAIN CONTENT */}
       <main style={{

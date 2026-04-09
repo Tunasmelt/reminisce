@@ -43,6 +43,16 @@ import {
 export const dynamic   = 'force-dynamic'
 export const maxDuration = 300
 
+async function computeHash(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(text)
+  )
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 export async function POST(req: Request) {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const authHeader = req.headers.get('authorization')
@@ -50,12 +60,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const token = authHeader.replace('Bearer ', '')
-  const { data: { user }, error: authError } =
-    await clientSupabase.auth.getUser(token)
+  const { data: { user }, error: authError } = await clientSupabase.auth.getUser(token)
   if (!user || authError)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+
+  // Check if user is banned
+  const { isUserBanned } = await import('@/lib/supabase')
+  if (await isUserBanned(user.id))
+    return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
+
   const uid = user.id
+
 
   // ── Parse body ────────────────────────────────────────────────────────────
   let body: {
@@ -301,13 +317,52 @@ export async function POST(req: Request) {
       try { await refundCost(uid, stepModel, stepRunId) } catch { /* non-fatal */ }
       const wizError = classifyError(aiErr)
       const isFatal  = prompt.step <= 1
-      controller.enqueue(sseEvent({
-        type: 'step_error', step: prompt.step, label: prompt.label,
-        error: wizError.message, errorType: wizError.type,
-        action: wizError.action, fatal: isFatal, resumeStep: prompt.step,
-      }))
-      if (isFatal) throw new Error(`Fatal step ${prompt.step}: ${wizError.message}`)
-      return null
+      // Non-fatal steps get one automatic retry after a delay
+      // This handles Groq TPM rate limits hit during parallel wave execution
+      if (!isFatal && (wizError.type === 'rate_limit' || wizError.type === 'timeout' || wizError.type === 'network')) {
+        controller.enqueue(sseEvent({
+          type: 'step_error', step: prompt.step, label: prompt.label,
+          error: `${wizError.message} — retrying in 8s…`, errorType: wizError.type,
+          action: 'retrying', fatal: false, resumeStep: prompt.step,
+        }))
+        await new Promise(r => setTimeout(r, 8000))
+        // One retry attempt
+        try {
+          const retryResponse = await callAI({
+            userId:      uid,
+            provider:    stepProvider,
+            model:       stepModel,
+            messages:    stepMessages,
+            stream:      false,
+            temperature: 0.3,
+            max_tokens:  prompt.maxTokens ?? 4096,
+          })
+          rawContent = retryResponse?.choices?.[0]?.message?.content ?? ''
+        } catch (retryErr: unknown) {
+          // Retry also failed — emit error and return null (non-fatal, generation continues)
+          const retryWizError = classifyError(retryErr)
+          controller.enqueue(sseEvent({
+            type: 'step_error', step: prompt.step, label: prompt.label,
+            error: retryWizError.message, errorType: retryWizError.type,
+            action: retryWizError.action, fatal: false, resumeStep: prompt.step,
+          }))
+          return null
+        }
+      } else if (!isFatal) {
+        controller.enqueue(sseEvent({
+          type: 'step_error', step: prompt.step, label: prompt.label,
+          error: wizError.message, errorType: wizError.type,
+          action: wizError.action, fatal: false, resumeStep: prompt.step,
+        }))
+        return null
+      } else {
+        controller.enqueue(sseEvent({
+          type: 'step_error', step: prompt.step, label: prompt.label,
+          error: wizError.message, errorType: wizError.type,
+          action: wizError.action, fatal: true, resumeStep: prompt.step,
+        }))
+        throw new Error(`Fatal step ${prompt.step}: ${wizError.message}`)
+      }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -315,13 +370,49 @@ export async function POST(req: Request) {
     if (!parsed) {
       try { await refundCost(uid, stepModel, stepRunId) } catch { /* non-fatal */ }
       const isFatal = prompt.step <= 1
+      if (!isFatal) {
+        // One retry with explicit JSON instruction
+        controller.enqueue(sseEvent({
+          type: 'step_error', step: prompt.step, label: prompt.label,
+          error: 'Retrying with stricter JSON format…', errorType: 'parse_failed',
+          action: 'retrying', fatal: false, resumeStep: prompt.step,
+        }))
+        await new Promise(r => setTimeout(r, 3000))
+        try {
+          const jsonRetry = await callAI({
+            userId:      uid,
+            provider:    stepProvider,
+            model:       stepModel,
+            messages:    [
+              ...stepMessages,
+              { role: 'assistant' as const, content: rawContent },
+              { role: 'user' as const, content: 'Your previous response was not valid JSON. Please respond with ONLY the JSON object, no markdown fences, no explanation, starting with { and ending with }.' },
+            ],
+            stream:      false,
+            temperature: 0.1,
+            max_tokens:  prompt.maxTokens ?? 4096,
+          })
+          const retryRaw    = jsonRetry?.choices?.[0]?.message?.content ?? ''
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const retryParsed = extractJSON(retryRaw) as Record<string, any> | null
+          if (retryParsed) {
+            controller.enqueue(sseEvent({ type: 'step_complete', step: prompt.step, label: prompt.label }))
+            return retryParsed
+          }
+        } catch { /* non-fatal — fall through */ }
+        controller.enqueue(sseEvent({
+          type: 'step_error', step: prompt.step, label: prompt.label,
+          error: 'Could not parse AI response. Blueprint will continue without this step.',
+          errorType: 'parse_failed', action: 'change_model', fatal: false, resumeStep: prompt.step,
+        }))
+        return null
+      }
       controller.enqueue(sseEvent({
         type: 'step_error', step: prompt.step, label: prompt.label,
         error: 'AI returned invalid JSON.', errorType: 'parse_failed',
-        action: 'change_model', fatal: isFatal, resumeStep: prompt.step,
+        action: 'change_model', fatal: true, resumeStep: prompt.step,
       }))
-      if (isFatal) throw new Error(`Fatal step ${prompt.step}: invalid JSON from AI`)
-      return null
+      throw new Error(`Fatal step ${prompt.step}: invalid JSON from AI`)
     }
 
     controller.enqueue(sseEvent({ type: 'step_complete', step: prompt.step, label: prompt.label }))
@@ -574,9 +665,9 @@ async function saveBlueprint(params: {
 }) {
   const { supabase, projectId, projectName, blueprint } = params
 
-  // Run all 6 deletes in parallel: same project-scoped cleanup
+  // Run all deletes in parallel: same project-scoped cleanup
   await Promise.all([
-    'graph_edges', 'graph_nodes', 'prompts', 'features', 'phases', 'contexts',
+    'graph_edges', 'graph_nodes', 'prompts', 'features', 'phases', 'contexts', 'wizard_sessions',
   ].map(t => supabase.from(t).delete().eq('project_id', projectId)))
 
   // ── 2. Insert master prompt ───────────────────────────────────────────────
@@ -826,12 +917,15 @@ async function saveBlueprint(params: {
               ? 'shared'
               : 'reminisce'
 
+          const fileHash = await computeHash(content as string)
+
           return {
             project_id:     projectId,
             file_path:      filePath,
             content:        content as string,
             summary,
             owned_by:       ownedBy,
+            file_hash:      fileHash,
             last_modified:  now,
             last_synced_at: now,
           }
@@ -903,23 +997,32 @@ async function saveBlueprint(params: {
     }
 
     const workflowNow = new Date().toISOString()
+    const phasesContent  = workflowPhaseLines.join('\n')
+    const featuresContent = workflowFeatureLines.join('\n')
+    const [phasesHash, featuresHash] = await Promise.all([
+      computeHash(phasesContent),
+      computeHash(featuresContent),
+    ])
+
     await supabase.from('contexts').upsert(
       [
         {
           project_id:     projectId,
           file_path:      'reminisce/workflow/phases.md',
-          content:        workflowPhaseLines.join('\n'),
+          content:        phasesContent,
           summary:        'Current project timeline showing all phases and feature counts.',
           owned_by:       'reminisce',
+          file_hash:      phasesHash,
           last_modified:  workflowNow,
           last_synced_at: workflowNow,
         },
         {
           project_id:     projectId,
           file_path:      'reminisce/workflow/features.md',
-          content:        workflowFeatureLines.join('\n'),
+          content:        featuresContent,
           summary:        'Complete feature list grouped by phase with statuses and type.',
           owned_by:       'reminisce',
+          file_hash:      featuresHash,
           last_modified:  workflowNow,
           last_synced_at: workflowNow,
         },

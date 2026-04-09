@@ -57,9 +57,10 @@ export default function LandingNav() {
   useEffect(() => { setMenuOpen(false) }, [pathname])
 
   const links = [
-    { name: 'FEATURES',   href: '/capabilities' },
-    { name: 'STRUCTURE',  href: '/engineering'  },
-    { name: 'DOCS',       href: '/docs'         },
+    { name: 'Features', href: '/capabilities' },
+    { name: 'How it works', href: '/engineering' },
+    { name: 'Docs', href: '/docs' },
+    { name: 'Pricing', href: '/upgrade' },
   ]
 
   const isActive = (href: string) => pathname === href
@@ -72,12 +73,12 @@ export default function LandingNav() {
         zIndex: 100,
         width: 'max-content',
         maxWidth: mobile ? 'calc(100% - 24px)' : 'calc(100% - 80px)',
-        minWidth: mobile ? undefined : 520,
+        minWidth: mobile ? undefined : 480,
         display: 'flex', alignItems: 'center',
         justifyContent: 'space-between',
         gap: mobile ? 8 : 28,
         padding: mobile ? '8px 14px' : '10px 20px',
-        background: scrolled ? 'rgba(5,5,16,0.92)' : 'rgba(5,5,16,0.6)',
+        background: scrolled ? 'rgba(5,5,16,0.94)' : 'rgba(5,5,16,0.75)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         border: scrolled
@@ -96,10 +97,8 @@ export default function LandingNav() {
           <ReminisceLogo size={22} color="#ffffff" />
           {!mobile && (
             <span style={{
-              color: '#fff', fontWeight: 800, fontSize: 13,
-              letterSpacing: '-0.01em',
-              textTransform: 'uppercase' as const,
-              fontStyle: 'italic',
+              color: '#fff', fontWeight: 700, fontSize: 15,
+              letterSpacing: '0.01em',
             }}>
               Reminisce
             </span>
@@ -113,8 +112,8 @@ export default function LandingNav() {
               <Link key={href} href={href} style={{
                 padding: '5px 13px', borderRadius: 999,
                 fontSize: 11, fontWeight: 700,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase' as const,
+                textTransform: 'none' as const,
+                letterSpacing: '0.01em',
                 color: isActive(href) ? ac : 'rgba(255,255,255,0.48)',
                 textDecoration: 'none',
                 background: isActive(href) ? hexToRgba(ac, 0.1) : 'transparent',
@@ -146,8 +145,8 @@ export default function LandingNav() {
           {!mobile && !isLoggedIn && (
             <Link href="/login" style={{
               fontSize: 11, fontWeight: 700,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase' as const,
+              textTransform: 'none' as const,
+              letterSpacing: '0.01em',
               color: 'rgba(255,255,255,0.4)',
               textDecoration: 'none',
               padding: '5px 12px',
@@ -167,8 +166,8 @@ export default function LandingNav() {
             padding: mobile ? '7px 13px' : '8px 18px',
             fontSize: mobile ? 10 : 11,
             fontWeight: 800,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase' as const,
+            textTransform: 'none' as const,
+            letterSpacing: '0.01em',
             textDecoration: 'none',
             boxShadow: `0 0 20px ${hexToRgba(ac, 0.35)}`,
             transition: 'opacity 0.15s',
@@ -177,7 +176,7 @@ export default function LandingNav() {
           onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.84'}
           onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
           >
-            {mobile ? 'Launch' : 'Launch Workspace →'}
+            {mobile ? 'Open' : 'Go to app →'}
           </Link>
 
           {mobile && (
@@ -199,14 +198,15 @@ export default function LandingNav() {
       </nav>
 
       {/* Scroll progress bar — only visible once user starts scrolling */}
-      {progress > 0 && (
+      {progress > 0.01 && (
         <div style={{
           position: 'fixed', top: 0, left: 0,
-          height: 2, zIndex: 101,
+          height: 2, zIndex: 99,
           width: `${Math.min(progress, 1) * 100}%`,
-          background: `linear-gradient(to right, ${hexToRgba(ac, 0.7)}, ${ac})`,
-          transition: 'width 0.1s linear',
+          background: `linear-gradient(to right, transparent 0%, ${hexToRgba(ac, 0.6)} 20%, ${ac} 100%)`,
+          transition: 'width 0.12s linear',
           pointerEvents: 'none',
+          borderRadius: '0 2px 2px 0',
         }}/>
       )}
 

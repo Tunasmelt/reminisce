@@ -782,6 +782,7 @@ export type WizardErrorType =
   | 'stream_died'
   | 'parse_failed'
   | 'generation_partial'
+  | 'network'
   | 'unknown'
 
 export interface WizardError {
@@ -824,6 +825,9 @@ export function classifyError(err: unknown): WizardError {
   }
   if (lower.includes('partial') || lower.includes('step')) {
     return { type: 'generation_partial', message: 'Generation partially succeeded.', actionLabel: 'Retry Remaining Steps', action: 'retry_step' }
+  }
+  if (lower.includes('network') || lower.includes('fetch') || lower.includes('econn') || lower.includes('connection')) {
+    return { type: 'network', message: 'Network connection failed. Check your internet or try again.', actionLabel: 'Retry', action: 'retry' }
   }
   return { type: 'unknown', message: 'Something went wrong. Try resending your message.', actionLabel: 'Resend', action: 'retry' }
 }
@@ -897,29 +901,51 @@ export const PROVIDER_DISPLAY: Record<string, string> = {
 }
 
 export const WIZARD_FREE_MODELS = [
-  { provider: 'groq'      as AIProvider, model: 'llama-3.1-8b-instant',                      label: 'Llama 3.1 8B',             badge: 'FAST'   },
-  { provider: 'groq'      as AIProvider, model: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout',            badge: 'NEW'    },
-  { provider: 'groq'      as AIProvider, model: 'llama-3.3-70b-versatile',                   label: 'Llama 3.3 70B',            badge: ''       },
-  { provider: 'groq'      as AIProvider, model: 'moonshotai/kimi-k2-instruct-0905',          label: 'Kimi K2',                  badge: ''       },
-  { provider: 'groq'      as AIProvider, model: 'qwen/qwen3-32b',                            label: 'Qwen3 32B',                badge: ''       },
-  { provider: 'cerebras'  as AIProvider, model: 'llama3.1-8b',                               label: 'Llama 3.1 8B (Cerebras)',  badge: 'FAST'   },
-  { provider: 'cerebras'  as AIProvider, model: 'llama-3.3-70b',                             label: 'Llama 3.3 70B (Cerebras)', badge: 'FAST'   },
-  { provider: 'sambanova' as AIProvider, model: 'Meta-Llama-3.3-70B-Instruct',               label: 'Llama 3.3 70B (SN)',       badge: ''       },
-  { provider: 'sambanova' as AIProvider, model: 'Meta-Llama-3.1-405B-Instruct',              label: 'Llama 405B',               badge: '405B'   },
-  { provider: 'gemini'    as AIProvider, model: 'gemini-2.5-flash-lite',                     label: 'Gemini Flash-Lite',        badge: '1M CTX' },
-  { provider: 'gemini'    as AIProvider, model: 'gemini-2.5-flash',                          label: 'Gemini Flash 2.5',         badge: '1M CTX' },
-  { provider: 'mistral'   as AIProvider, model: 'mistral-small-latest',                      label: 'Mistral Small',            badge: ''       },
-  { provider: 'mistral'   as AIProvider, model: 'codestral-latest',                          label: 'Codestral',                badge: 'CODE'   },
-  { provider: 'kimi'      as AIProvider, model: 'kimi-k2.5',                                 label: 'Kimi K2.5',                badge: '256K'   },
+  // ── Free tier — Groq (fast LPU inference) ──────────────────────────────
+  { provider: 'groq'       as AIProvider, model: 'llama-3.1-8b-instant',                      label: 'Llama 3.1 8B',             badge: 'FAST',   free: true },
+  { provider: 'groq'       as AIProvider, model: 'llama-3.3-70b-versatile',                   label: 'Llama 3.3 70B',            badge: '',       free: true },
+  { provider: 'groq'       as AIProvider, model: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout ⚡',        badge: 'NEW',    free: true },
+  { provider: 'groq'       as AIProvider, model: 'meta-llama/llama-4-maverick',               label: 'Llama 4 Maverick',         badge: '',       free: true },
+  { provider: 'groq'       as AIProvider, model: 'moonshotai/kimi-k2',                        label: 'Kimi K2',                  badge: '',       free: true },
+  { provider: 'groq'       as AIProvider, model: 'qwen-qwen3-32b',                            label: 'Qwen3 32B',                badge: '',       free: true },
+
+  // ── Free tier — Cerebras (fastest inference, 1M tokens/day) ────────────
+  { provider: 'cerebras'   as AIProvider, model: 'llama3.1-8b',                               label: 'Llama 3.1 8B (Cerebras) ⚡', badge: 'FAST',   free: true },
+  { provider: 'cerebras'   as AIProvider, model: 'llama-4-scout-17b-16e-instruct',            label: 'Llama 4 Scout (Cerebras) ⚡', badge: 'FAST',   free: true },
+  { provider: 'cerebras'   as AIProvider, model: 'gpt-oss-120b',                              label: 'GPT-OSS 120B (Cerebras) ⚡', badge: 'FAST',   free: true },
+
+  // ── Free tier — SambaNova (ultra-fast RDU inference) ───────────────────
+  { provider: 'sambanova'  as AIProvider, model: 'DeepSeek-V3.2',                             label: 'DeepSeek V3.2',            badge: '',       free: true },
+  { provider: 'sambanova'  as AIProvider, model: 'DeepSeek-R1-Distill-Llama-70B',             label: 'DeepSeek R1 Distill',      badge: '',       free: true },
+  { provider: 'sambanova'  as AIProvider, model: 'Llama-4-Maverick-17B-128E-Instruct',        label: 'Llama 4 Maverick (SN)',    badge: '',       free: true },
+  { provider: 'sambanova'  as AIProvider, model: 'Meta-Llama-3.3-70B-Instruct',               label: 'Llama 3.3 70B (SN)',       badge: '',       free: true },
+
+  // ── Free tier — OpenRouter (20 RPM, `:free` suffix models) ────────────
+  { provider: 'openrouter' as AIProvider, model: 'meta-llama/llama-3.3-70b-instruct:free',    label: 'Llama 3.3 70B (OR)',       badge: '',       free: true },
+  { provider: 'openrouter' as AIProvider, model: 'meta-llama/llama-4-maverick:free',           label: 'Llama 4 Maverick (OR)',   badge: '',       free: true },
+  { provider: 'openrouter' as AIProvider, model: 'deepseek/deepseek-chat-v3.1:free',           label: 'DeepSeek V3.1',           badge: '',       free: true },
+  { provider: 'openrouter' as AIProvider, model: 'qwen/qwen3-235b-a22b:free',                  label: 'Qwen3 235B',              badge: '',       free: true },
 ] as const
 
 export const WIZARD_PRO_MODELS = [
-  { provider: 'anthropic' as AIProvider, model: 'claude-haiku-4-5',           label: 'Claude Haiku 4.5',  badge: ''     },
-  { provider: 'anthropic' as AIProvider, model: 'claude-sonnet-4-6-20250514', label: 'Claude Sonnet 4.6', badge: 'BEST' },
-  { provider: 'openai'    as AIProvider, model: 'gpt-4o-mini',                label: 'GPT-4o Mini',       badge: ''     },
-  { provider: 'openai'    as AIProvider, model: 'gpt-4o',                     label: 'GPT-4o',            badge: ''     },
-  { provider: 'gemini'    as AIProvider, model: 'gemini-2.5-pro',             label: 'Gemini 2.5 Pro',    badge: '1M'   },
-  { provider: 'mistral'   as AIProvider, model: 'mistral-large-latest',       label: 'Mistral Large',     badge: ''     },
+  // ── Pro tier — Anthropic ───────────────────────────────────────────────
+  { provider: 'anthropic'  as AIProvider, model: 'claude-haiku-4-5-20251001',                 label: 'Claude Haiku 4.5',         badge: '',       free: false },
+  { provider: 'anthropic'  as AIProvider, model: 'claude-sonnet-4-20250514',                  label: 'Claude Sonnet 4',          badge: 'BEST',   free: false },
+  { provider: 'anthropic'  as AIProvider, model: 'claude-opus-4-5-20251101',                  label: 'Claude Opus 4',            badge: '',       free: false },
+
+  // ── Pro tier — Google ──────────────────────────────────────────────────
+  { provider: 'gemini'     as AIProvider, model: 'gemini-2.5-flash',                          label: 'Gemini 2.5 Flash',         badge: '1M CTX', free: false },
+  { provider: 'gemini'     as AIProvider, model: 'gemini-2.5-pro',                            label: 'Gemini 2.5 Pro',           badge: '1M CTX', free: false },
+
+  // ── Pro tier — OpenAI ──────────────────────────────────────────────────
+  { provider: 'openai'     as AIProvider, model: 'gpt-4o-mini',                               label: 'GPT-4o Mini',              badge: '',       free: false },
+  { provider: 'openai'     as AIProvider, model: 'gpt-4o',                                    label: 'GPT-4o',                   badge: '',       free: false },
+  { provider: 'openai'     as AIProvider, model: 'gpt-4.1',                                   label: 'GPT-4.1',                  badge: '',       free: false },
+
+  // ── Pro tier — Mistral ─────────────────────────────────────────────────
+  { provider: 'mistral'    as AIProvider, model: 'codestral-latest',                          label: 'Codestral',                badge: 'CODE',   free: false },
+  { provider: 'mistral'    as AIProvider, model: 'mistral-small-latest',                      label: 'Mistral Small',            badge: '',       free: false },
+  { provider: 'mistral'    as AIProvider, model: 'mistral-large-latest',                      label: 'Mistral Large',            badge: '',       free: false },
 ] as const
 
 export type WizardModel =

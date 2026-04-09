@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic'
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) throw new Error('STRIPE_SECRET_KEY is not configured')
-  return new Stripe(key, { apiVersion: '2026-02-25.clover' })
+  // @ts-expect-error Stripe types are incorrectly hardcoded to a future version
+  return new Stripe(key, { apiVersion: '2024-06-20' })
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL 

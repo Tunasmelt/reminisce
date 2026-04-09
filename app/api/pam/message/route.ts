@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
-import { callAI } from '@/lib/ai-client'
+import { callAI, userHasOwnKey } from '@/lib/ai-client'
 import type { AIProvider } from '@/lib/ai-client'
 import { deductCost, refundCost, ensureWallet } from '@/lib/wallet'
+
+export const dynamic = 'force-dynamic'
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Smart context loader
@@ -134,8 +136,9 @@ PAM's capabilities:
 - Give a full project status briefing on request.
 - Users can prefix messages with /commands for fast actions:
     /status or /briefing       → full project status report
-    /done @feature:[name]      → mark a feature as done
-    /block @feature:[name]     → mark a feature as blocked
+    /done @feature:[name]      → mark a feature as done (emit UPDATE_FEATURE_STATUS)
+    /active @feature:[name]    → start a feature (emit UPDATE_FEATURE_STATUS)
+    /block @feature:[name]     → mark a feature as blocked (emit UPDATE_FEATURE_STATUS)
     /prompt @feature:[name]    → generate a build prompt for that feature
     /add [feature] to @phase:[name] → add a new feature to a phase
     /remind [text] on [date]   → create a project reminder
@@ -278,6 +281,11 @@ export async function POST(req: Request) {
     if (!user || authError)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    // Check if user is banned
+    const { isUserBanned } = await import('@/lib/supabase')
+    if (await isUserBanned(user.id))
+      return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
+
     const { threadId, projectId, provider, model, content } = await req.json()
 
     if (!threadId || !projectId || !provider || !model || !content?.trim())
@@ -288,7 +296,32 @@ export async function POST(req: Request) {
 
     await ensureWallet(user.id)
 
-    const isBYOK = false
+    const supabase = getServiceSupabase()
+
+    // ── Thread ownership check ────────────────────────────────────────────
+    // Verify the thread belongs to this user AND this project
+    const { data: threadRow, error: threadErr } = await supabase
+      .from('pam_threads')
+      .select('id, user_id, project_id')
+      .eq('id', threadId)
+      .single()
+
+    if (threadErr || !threadRow) {
+      return NextResponse.json(
+        { error: 'Thread not found' },
+        { status: 404 }
+      )
+    }
+
+    if (threadRow.user_id !== user.id || threadRow.project_id !== projectId) {
+      return NextResponse.json(
+        { error: 'Forbidden: thread does not belong to you' },
+        { status: 403 }
+      )
+    }
+
+    // ── BYOK check ───────────────────────────────────────────────────────
+    const isBYOK = await userHasOwnKey(user.id, provider as AIProvider)
     let runId: string | null = null
 
     if (!isBYOK) {
@@ -296,8 +329,6 @@ export async function POST(req: Request) {
       if (!costResult.success)
         return NextResponse.json({ error: costResult.message }, { status: 402 })
     }
-
-    const supabase = getServiceSupabase()
 
     // ── Detect which files to smart-load for this turn ──────────────────────
     const smartLoadPaths = detectSmartLoadPaths(content)
@@ -398,6 +429,7 @@ export async function POST(req: Request) {
     }))
 
     const flatFeatures = (features ?? []).map(f => ({
+      id:     f.id,
       name:   f.name,
       status: f.status ?? 'planned',
       type:   f.type ?? 'frontend',
@@ -506,6 +538,16 @@ export async function POST(req: Request) {
           }).eq('id', threadId)
 
           // ── Send meta event to client ───────────────────────────────────
+          const hasDrift = fullText.includes('⚠️ Scope alert:')
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                __pam_meta: true,
+                scopeDrift: hasDrift,
+              })}\n\n`,
+            ),
+          )
+
           if (actionType && actionPayload) {
             controller.enqueue(
               new TextEncoder().encode(
@@ -663,6 +705,25 @@ export async function PATCH(req: Request) {
     // Append to changes.md — non-fatal
     if (changelogEntry) {
       await appendToChangelog(supabase, projectId, changelogEntry)
+    }
+
+    // ── Sync feature status to DB as fallback (in case featureId was missing/wrong) ──
+    if (confirmed && msg.action_type === 'UPDATE_FEATURE_STATUS' && payload?.featureName) {
+      const { newStatus, featureName } = payload
+      const { data: matchedFeature } = await supabase
+        .from('features')
+        .select('id')
+        .eq('project_id', projectId)
+        .ilike('name', (featureName as string).trim())
+        .limit(1)
+        .maybeSingle()
+
+      if (matchedFeature?.id) {
+        await supabase
+          .from('features')
+          .update({ status: newStatus as string })
+          .eq('id', matchedFeature.id)
+      }
     }
 
     return NextResponse.json({ ok: true, executed: true })

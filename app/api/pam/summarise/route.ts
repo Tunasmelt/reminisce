@@ -3,6 +3,8 @@ import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } f
 import { callAI } from '@/lib/ai-client'
 import type { AIProvider } from '@/lib/ai-client'
 
+export const dynamic = 'force-dynamic'
+
 // POST /api/pam/summarise
 // Summarises a completed thread and stores the summary for
 // cross-thread memory. Called when a thread is archived or

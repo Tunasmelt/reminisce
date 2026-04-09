@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Search, Terminal, Copy, Check, ChevronRight, BookOpen, Pencil, Clock } from 'lucide-react'
 import { toast } from 'sonner'
@@ -190,6 +190,13 @@ export default function PromptsPage() {
 
   useEffect(() => { loadTab(activeTab) }, [loadTab, activeTab])
 
+  // Auto-select first prompt when prompts list changes
+  useEffect(() => {
+    if (prompts.length > 0 && !selectedPrompt) {
+      setSelectedPrompt(prompts[0])
+    }
+  }, [prompts, selectedPrompt])
+
   // ── Grouping ───────────────────────────────────────────────────────────────
   const filtered = prompts.filter(p =>
     !searchQuery ||
@@ -240,10 +247,77 @@ export default function PromptsPage() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{
-      display: 'flex', height: 'calc(100vh - 68px)',
-      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+      display: 'flex', flexDirection: 'column', height: 'calc(100vh - 68px)',
+      background: '#05050f', overflow: 'hidden',
     }}>
       <title>{`Reminisce — Prompts — ${project?.name ?? ''}`}</title>
+
+      {/* ── TOP BAR ─────────────────────────────────────── */}
+      <div style={{
+        height: 52,
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'rgba(8,8,20,0.6)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        padding: '0 24px',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+        zIndex: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Prompts</span>
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{project?.name}</span>
+        </div>
+
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', gap: 0, alignSelf: 'stretch' }}>
+          {tabs.map(t => {
+            const isActive = activeTab === t.key
+            return (
+              <button
+                key={t.key}
+                onClick={() => { setActiveTab(t.key); setSelectedPrompt(null) }}
+                style={{
+                  padding: '0 20px',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? `2px solid ${accent}` : '2px solid transparent',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
+                  fontSize: 13, fontWeight: isActive ? 700 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  marginBottom: -1,
+                }}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div style={{ width: 120, display: 'flex', justifyContent: 'flex-end' }}>
+          {activeTab === 'custom' && (
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{
+                padding: '6px 14px',
+                background: accent, color: '#000',
+                border: 'none', borderRadius: 999,
+                fontSize: 11, fontWeight: 800,
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
+            >
+              + New Prompt
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
       {/* ═══════════════════════════════════════
           LEFT — List column
@@ -253,41 +327,13 @@ export default function PromptsPage() {
         borderRight: '1px solid rgba(255,255,255,0.08)',
         background: 'rgba(255,255,255,0.025)',
       }}>
-        {/* Header */}
         <div style={{
-          padding: '16px 16px 12px',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-          background: 'rgba(8,8,20,0.6)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
+          padding: '16px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: 'rgba(255,255,255,0.015)',
         }}>
-          {/* Tabs */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
-            {tabs.map(t => (
-              <button
-                key={t.key}
-                onClick={() => setActiveTab(t.key)}
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', gap: 5,
-                  padding: '7px 0',
-                  background: activeTab === t.key
-                    ? hexToRgba(accent, 0.12) : 'transparent',
-                  border: `1px solid ${activeTab === t.key
-                    ? hexToRgba(accent, 0.35) : 'rgba(255,255,255,0.08)'}`,
-                  borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s',
-                  fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
-                  color: activeTab === t.key ? accent : 'rgba(255,255,255,0.35)',
-                }}
-              >
-                {t.icon}{t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search — shown for blueprint + custom only */}
           {activeTab !== 'changelog' && (
-            <div style={{ position: 'relative', marginBottom: 10 }}>
+            <div style={{ position: 'relative' }}>
               <Search size={12} style={{
                 position: 'absolute', left: 10, top: '50%',
                 transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)',
@@ -298,30 +344,13 @@ export default function PromptsPage() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 style={{
-                  width: '100%', background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8,
-                  padding: '8px 10px 8px 30px', fontSize: 12, color: '#fff',
+                  width: '100%', background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10,
+                  padding: '8px 10px 8px 32px', fontSize: 12, color: '#fff',
                   outline: 'none', boxSizing: 'border-box',
                 }}
               />
             </div>
-          )}
-
-          {/* New button — custom tab only */}
-          {activeTab === 'custom' && (
-            <button
-              onClick={() => setShowCreate(true)}
-              style={{
-                width: '100%', padding: '8px',
-                background: hexToRgba(accent, 0.08),
-                border: `1px solid ${hexToRgba(accent, 0.25)}`,
-                borderRadius: 8, cursor: 'pointer',
-                fontSize: 11, fontWeight: 700,
-                color: accent, transition: 'all 0.15s',
-              }}
-            >
-              + New prompt
-            </button>
           )}
         </div>
 
@@ -347,49 +376,53 @@ export default function PromptsPage() {
               Loading...
             </div>
           ) : sortedGroupKeys.length === 0 ? (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 12, lineHeight: 1.7 }}>
-              {activeTab === 'blueprint'
-                ? 'No blueprint prompts yet.\nRun the Wizard to generate your project blueprint.'
-                : 'No custom prompts yet.\nClick "+ New prompt" to create one.'}
+            <div style={{ textAlign: 'center', padding: '80px 32px' }}>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', lineHeight: 1.7, marginBottom: 24, whiteSpace: 'pre-wrap' }}>
+                {activeTab === 'blueprint'
+                  ? 'No blueprint prompts yet.\nRun the Wizard to generate your project blueprint.'
+                  : 'No custom prompts yet.\nClick "+ New Prompt" to start building.'}
+              </div>
+              {activeTab === 'custom' && (
+                <button
+                  onClick={() => setShowCreate(true)}
+                  style={{
+                    background: accent, color: '#000', border: 'none',
+                    borderRadius: 999, padding: '10px 24px',
+                    fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  Create Custom Prompt
+                </button>
+              )}
             </div>
           ) : (
             sortedGroupKeys.map(group => (
               <div key={group}>
                 {/* Group header */}
-                <button
+                <div
                   onClick={() => setCollapsedSections(p => ({ ...p, [group]: !p[group] }))}
                   style={{
-                    width: '100%', display: 'flex', alignItems: 'center',
+                    padding: '24px 16px 8px',
+                    display: 'flex', alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '8px 16px',
-                    background: 'rgba(255,255,255,0.02)',
-                    border: 'none',
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    borderTop: '1px solid rgba(255,255,255,0.04)',
                     cursor: 'pointer',
                   }}
                 >
                   <span style={{
-                    fontSize: 9, fontWeight: 800, letterSpacing: '0.12em',
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
                     textTransform: 'uppercase',
-                    color: group === '✦ Master' ? accent : 'rgba(255,255,255,0.4)',
+                    color: group === '✦ Master' ? accent : 'rgba(255,255,255,0.25)',
                   }}>
                     {group}
                   </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                      fontSize: 9, padding: '1px 6px', borderRadius: 999,
-                      background: hexToRgba(accent, 0.1), color: accent, fontWeight: 700,
-                    }}>
-                      {groupedByPhase[group].length}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <ChevronRight size={10} style={{
-                      color: 'rgba(255,255,255,0.25)',
+                      color: 'rgba(255,255,255,0.2)',
                       transform: collapsedSections[group] ? 'rotate(0)' : 'rotate(90deg)',
                       transition: 'transform 0.15s',
                     }} />
                   </div>
-                </button>
+                </div>
 
                 {/* Prompt cards */}
                 {!collapsedSections[group] && groupedByPhase[group].map(p => {
@@ -405,42 +438,50 @@ export default function PromptsPage() {
                       key={p.id}
                       onClick={() => setSelectedPrompt(p)}
                       style={{
-                        padding: '11px 16px', cursor: 'pointer',
-                        borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        background: isSelected ? hexToRgba(accent, 0.07) : 'transparent',
-                        borderLeft: `2px solid ${isSelected ? accent : 'transparent'}`,
-                        transition: 'all 0.1s',
+                        padding: '16px 20px', cursor: 'pointer',
+                        borderRadius: 14,
+                        background: isSelected ? hexToRgba(accent, 0.08) : 'rgba(255,255,255,0.025)',
+                        border: isSelected
+                          ? `1px solid ${hexToRgba(accent, 0.4)}`
+                          : '1px solid rgba(255,255,255,0.07)',
+                        margin: '0 12px 8px',
+                        transition: 'all 0.15s',
                       }}
-                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
-                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                      onMouseEnter={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = hexToRgba(accent, 0.25)
+                          e.currentTarget.style.background = hexToRgba(accent, 0.03)
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.025)'
+                        }
+                      }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                         <span style={{
                           fontSize: 8, fontWeight: 800, letterSpacing: '0.06em',
                           padding: '1px 5px', borderRadius: 4,
                           background: `${tc}20`, color: tc, border: `1px solid ${tc}40`,
                           flexShrink: 0,
+                          textTransform: 'uppercase',
                         }}>
                           {p.prompt_type.replace(/_/g, ' ')}
                         </span>
-                        {p.run_count > 0 && (
-                          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)' }}>
-                            ↻ {p.run_count}
-                          </span>
-                        )}
                       </div>
                       <div style={{
-                        fontSize: 12, fontWeight: 600,
+                        fontSize: 13, fontWeight: 600,
                         color: isSelected ? '#fff' : 'rgba(255,255,255,0.7)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        marginBottom: 3,
+                        marginBottom: 4,
                       }}>
                         {displayTitle}
                       </div>
                       <div style={{
-                        fontSize: 10, color: 'rgba(255,255,255,0.3)',
-                        overflow: 'hidden', display: '-webkit-box',
-                        WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' as const,
+                        fontSize: 11, color: 'rgba(255,255,255,0.3)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
                         {(p.raw_prompt ?? p.structured_prompt ?? '').slice(0, 60)}
                       </div>
@@ -456,7 +497,7 @@ export default function PromptsPage() {
       {/* ═══════════════════════════════════════
           RIGHT — Detail / Changelog panel
       ═══════════════════════════════════════ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: 'rgba(255,255,255,0.01)' }}>
 
         {/* Changelog tab */}
         {activeTab === 'changelog' && (
@@ -586,15 +627,15 @@ export default function PromptsPage() {
 
                 {/* Structured prompt */}
                 <div style={{ marginBottom: 28 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
-                    Prompt
+                  <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', marginBottom: 12 }}>
+                    Prompt Content
                   </div>
                   <div style={{
-                    background: 'rgba(4,4,16,0.8)', border: '1px solid rgba(255,255,255,0.09)',
-                    borderRadius: 12, padding: '20px 24px',
+                    background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 10, padding: '16px',
                     fontFamily: 'ui-monospace, monospace', fontSize: 12,
-                    color: 'rgba(255,255,255,0.75)', lineHeight: 1.8, whiteSpace: 'pre-wrap',
-                    maxHeight: 400, overflowY: 'auto',
+                    color: 'rgba(255,255,255,0.8)', lineHeight: 1.7, whiteSpace: 'pre-wrap',
+                    maxHeight: 500, overflowY: 'auto',
                   }}>
                     {selectedPrompt.structured_prompt ?? selectedPrompt.raw_prompt ?? '(empty)'}
                   </div>
@@ -673,6 +714,8 @@ export default function PromptsPage() {
             </div>
           )
         )}
+      </div>
+
       </div>
 
       {/* ═══════════════════════════════════════

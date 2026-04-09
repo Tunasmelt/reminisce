@@ -3,7 +3,8 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useTheme } from '@/hooks/useTheme'
-import { Plus, GitBranch, X, ChevronDown } from 'lucide-react'
+import { Plus, GitBranch, X, ChevronDown, LayoutGrid } from 'lucide-react'
+import { useIsMobile } from '@/hooks/useMediaQuery'
 import { useProjectData } from '../graph/useProjectData'
 import { DetailPanel } from '../graph/DetailPanel'
 import { AddFeatureModal } from '../graph/AddFeatureModal'
@@ -30,6 +31,7 @@ export default function BoardPage() {
   const params = useParams()
   const projectId = params.id as string
   const { accent } = useTheme()
+  const isMobile = useIsMobile()
 
   const {
     project, phases, features, loading,
@@ -58,6 +60,8 @@ export default function BoardPage() {
   const [quickAddPhaseId, setQuickAddPhaseId] = useState('')
   const [quickAddSaving, setQuickAddSaving] = useState(false)
 
+  const [groupByPhase, setGroupByPhase] = useState(false)
+
   // ── Drag state (native HTML5 DnD) ─────────────────────
   const dragFeatureId = useRef<string | null>(null)
   const dragOverCol = useRef<StatusKey | null>(null)
@@ -81,6 +85,17 @@ export default function BoardPage() {
       })
       .sort((a, b) => a.priority - b.priority)
   }, [visibleFeatures])
+
+  const getFeaturesGroupedByPhase = useCallback((status: StatusKey) => {
+    const colFeatures = visibleFeatures
+      .filter(f => normalizeStatus(f.status) === status)
+      .sort((a, b) => a.priority - b.priority)
+
+    return phases.map(phase => ({
+      phase,
+      features: colFeatures.filter(f => f.phase_id === phase.id),
+    })).filter(g => g.features.length > 0)
+  }, [visibleFeatures, phases])
 
   // ── Drag handlers ─────────────────────────────────────
 
@@ -235,7 +250,7 @@ export default function BoardPage() {
       display: 'flex',
       gap: 12,
       padding: 20,
-      background: '#07070f',
+      background: '#05050f',
       overflow: 'hidden',
     }}>
       {BOARD_COLUMNS.map(col => (
@@ -260,7 +275,7 @@ export default function BoardPage() {
       justifyContent: 'center',
       gap: 16,
       padding: 40,
-      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+      background: '#05050f',
     }}>
       <div style={{
         width: 56, height: 56, borderRadius: 16,
@@ -317,7 +332,7 @@ export default function BoardPage() {
       height: 'calc(100vh - 68px)',
       display: 'flex',
       flexDirection: 'column',
-      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+      background: '#05050f',
       overflow: 'hidden',
       position: 'relative',
     }}>
@@ -441,12 +456,14 @@ export default function BoardPage() {
         </div>
 
         {/* Feature count */}
-        <span style={{
-          fontSize: 11,
-          color: 'rgba(255,255,255,0.25)',
-        }}>
-          {visibleFeatures.length} feature{visibleFeatures.length !== 1 ? 's' : ''}
-        </span>
+        {!isMobile && (
+          <span style={{
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.25)',
+          }}>
+            {visibleFeatures.length} feature{visibleFeatures.length !== 1 ? 's' : ''}
+          </span>
+        )}
 
         <div style={{ flex: 1 }} />
 
@@ -478,29 +495,79 @@ export default function BoardPage() {
           </button>
         )}
 
+        {/* Add Feature button */}
+        <button
+          onClick={() => handleOpenAddFeature('planned')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 16px',
+            background: accent, color: '#000',
+            border: 'none', borderRadius: 999,
+            fontSize: 11, fontWeight: 800,
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+        >
+          <Plus size={12} strokeWidth={3} /> Add Feature
+        </button>
+
         {/* Graph link */}
-        <a
-          href={`/dashboard/projects/${projectId}/graph`}
+        {!isMobile && (
+          <a
+            href={`/dashboard/projects/${projectId}/graph`}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '6px 14px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
+              color: 'rgba(255,255,255,0.6)',
+              fontSize: 11, fontWeight: 700,
+              textDecoration: 'none',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+              e.currentTarget.style.color = '#fff'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+              e.currentTarget.style.color = 'rgba(255,255,255,0.6)'
+            }}
+          >
+            <GitBranch size={11} /> Graph View
+          </a>
+        )}
+
+        <button
+          onClick={() => setGroupByPhase(g => !g)}
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
             padding: '6px 14px',
-            background: hexToRgba(accent, 0.08),
-            border: `1px solid ${hexToRgba(accent, 0.2)}`,
+            background: groupByPhase
+              ? hexToRgba(accent, 0.1)
+              : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${groupByPhase
+              ? hexToRgba(accent, 0.25)
+              : 'rgba(255,255,255,0.09)'}`,
             borderRadius: 8,
-            color: accent,
-            fontSize: 11, fontWeight: 700,
-            textDecoration: 'none',
+            color: groupByPhase ? accent : 'rgba(255,255,255,0.5)',
+            fontSize: 11, fontWeight: 700, cursor: 'pointer',
             transition: 'all 0.15s',
           }}
-          onMouseEnter={e =>
-            e.currentTarget.style.background = hexToRgba(accent, 0.16)
-          }
-          onMouseLeave={e =>
-            e.currentTarget.style.background = hexToRgba(accent, 0.08)
-          }
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = hexToRgba(accent, 0.3)
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = groupByPhase
+              ? hexToRgba(accent, 0.25)
+              : 'rgba(255,255,255,0.09)'
+          }}
         >
-          <GitBranch size={11} /> Graph View
-        </a>
+          <LayoutGrid size={11}/> {groupByPhase ? 'Flat' : 'Swimlanes'}
+        </button>
       </div>
 
       {/* Close phase filter on outside click */}
@@ -559,12 +626,13 @@ export default function BoardPage() {
             >
               {/* Column header */}
               <div style={{
-                padding: '12px 14px 10px',
+                padding: '12px 16px 10px',
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                borderBottom: `2px solid ${col.color}30`,
+                background: 'transparent',
               }}>
                 <span style={{
                   width: 8, height: 8,
@@ -573,9 +641,9 @@ export default function BoardPage() {
                   flexShrink: 0,
                 }} />
                 <span style={{
-                  fontSize: 10, fontWeight: 800,
+                  fontSize: 11, fontWeight: 800,
                   color: 'rgba(255,255,255,0.7)',
-                  letterSpacing: '0.08em',
+                  letterSpacing: '0.1em',
                   textTransform: 'uppercase',
                   flex: 1,
                 }}>
@@ -583,17 +651,11 @@ export default function BoardPage() {
                 </span>
                 <span style={{
                   fontSize: 10, fontWeight: 700,
-                  color: colFeatures.length > 0
-                    ? col.color
-                    : 'rgba(255,255,255,0.2)',
-                  background: colFeatures.length > 0
-                    ? `${col.color}15`
-                    : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${colFeatures.length > 0
-                    ? `${col.color}30`
-                    : 'rgba(255,255,255,0.08)'}`,
+                  color: 'rgba(255,255,255,0.6)',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 999,
-                  padding: '1px 7px',
+                  padding: '2px 8px',
                   minWidth: 22,
                   textAlign: 'center',
                 }}>
@@ -643,25 +705,64 @@ export default function BoardPage() {
                 }}
                 className="hide-scrollbar"
               >
-                {colFeatures.map(feature => (
-                  <FeatureCard
-                    key={feature.id}
-                    feature={feature}
-                    phases={phases}
-                    colStatus={col.key}
-                    colColor={col.color}
-                    isDragging={draggingId === feature.id}
-                    isDropTarget={dropTargetFeatureId === feature.id}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={handleFeatureDragOver}
-                    onDrop={handleDrop}
-                    onClick={() => {
-                      setPanelType('feature')
-                      setPanelId(feature.id)
-                    }}
-                  />
-                ))}
+                {groupByPhase
+                  ? getFeaturesGroupedByPhase(col.key).map(({ phase, features: pf }) => (
+                      <div key={phase.id}>
+                        <div style={{
+                          fontSize: 9, fontWeight: 800, letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          color: 'rgba(255,255,255,0.28)',
+                          padding: '8px 4px 4px',
+                          borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          marginBottom: 4,
+                        }}>
+                          {phase.name}
+                        </div>
+                        {pf.map(feat => (
+                          <FeatureCard
+                            key={feat.id}
+                            feature={feat}
+                            phases={phases}
+                            colStatus={col.key}
+                            colColor={col.color}
+                            isDragging={draggingId === feat.id}
+                            isDropTarget={dropTargetFeatureId === feat.id}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={handleFeatureDragOver}
+                            onDrop={handleDrop}
+                            onMoveToStatus={setFeatureStatus}
+                            isMobile={isMobile}
+                            onClick={() => {
+                              setPanelType('feature')
+                              setPanelId(feat.id)
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ))
+                  : colFeatures.map(feature => (
+                    <FeatureCard
+                      key={feature.id}
+                      feature={feature}
+                      phases={phases}
+                      colStatus={col.key}
+                      colColor={col.color}
+                      isDragging={draggingId === feature.id}
+                      isDropTarget={dropTargetFeatureId === feature.id}
+                      onDragStart={handleDragStart}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={handleFeatureDragOver}
+                      onDrop={handleDrop}
+                      onMoveToStatus={setFeatureStatus}
+                      isMobile={isMobile}
+                      onClick={() => {
+                        setPanelType('feature')
+                        setPanelId(feature.id)
+                      }}
+                    />
+                  ))
+                }
 
                 {/* Drop zone indicator when dragging over empty column */}
                 {isDropTarget && wouldChangeStatus && colFeatures.length === 0 && (
@@ -686,8 +787,8 @@ export default function BoardPage() {
                 {/* Quick-add inline form */}
                 {quickAddCol === col.key ? (
                   <div style={{
-                    background: 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 10,
                     padding: '10px 12px',
                   }}>
@@ -869,6 +970,8 @@ interface FeatureCardProps {
   onDragEnd: () => void
   onDragOver: (e: React.DragEvent, col: StatusKey, id: string) => void
   onDrop: (e: React.DragEvent) => void
+  onMoveToStatus: (id: string, newStatus: StatusKey) => void
+  isMobile: boolean
   onClick: () => void
 }
 
@@ -883,9 +986,12 @@ function FeatureCard({
   onDragEnd,
   onDragOver,
   onDrop,
+  onMoveToStatus,
+  isMobile,
   onClick,
 }: FeatureCardProps) {
   const parentPhase = phases.find(p => p.id === feature.phase_id)
+  const [showMoveMenu, setShowMoveMenu] = useState(false)
 
   return (
     <div
@@ -923,13 +1029,76 @@ function FeatureCard({
       }}
     >
       {/* Feature name */}
-      <div style={{
-        fontSize: 12, fontWeight: 600,
-        color: '#fff', lineHeight: 1.4,
-        marginBottom: 8,
-        wordBreak: 'break-word',
-      }}>
-        {feature.name}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span style={{
+            fontSize: 9, fontWeight: 800,
+            color: 'rgba(255,255,255,0.2)',
+            minWidth: 16, textAlign: 'center',
+          }}>
+            #{feature.priority}
+          </span>
+          <div style={{
+            fontSize: 12, fontWeight: 600,
+            color: '#fff', lineHeight: 1.4,
+            wordBreak: 'break-word',
+          }}>
+            {feature.name}
+          </div>
+        </div>
+
+        {isMobile && (
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={e => { e.stopPropagation(); setShowMoveMenu(v => !v) }}
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 6, padding: '4px 8px',
+                fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.5)',
+                cursor: 'pointer',
+              }}
+            >
+              Move →
+            </button>
+            {showMoveMenu && (
+              <div style={{
+                position: 'absolute', bottom: '100%', right: 0,
+                marginBottom: 4, minWidth: 140,
+                background: 'rgba(10,10,24,0.98)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10, overflow: 'hidden',
+                zIndex: 50, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              }}>
+                {BOARD_COLUMNS
+                  .filter(c => c.key !== colStatus)
+                  .map(c => (
+                    <button
+                      key={c.key}
+                      onClick={e => {
+                        e.stopPropagation()
+                        setShowMoveMenu(false)
+                        onMoveToStatus?.(feature.id, c.key)
+                      }}
+                      style={{
+                        width: '100%', textAlign: 'left',
+                        padding: '9px 12px', background: 'transparent',
+                        border: 'none', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                        color: c.color, fontSize: 11, cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Badges row */}

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
+import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess, isUserBanned } from '@/lib/supabase'
 import type { ConfirmedFeature, TechStackOption } from '@/lib/wizard-stages'
+
+export const dynamic = 'force-dynamic'
 
 // PATCH /api/wizard/session
 // The single authoritative write point for user-confirmed wizard data.
@@ -19,6 +21,9 @@ export async function PATCH(req: Request) {
       await clientSupabase.auth.getUser(token)
     if (!user || authError)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    if (await isUserBanned(user.id))
+      return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
 
     const body: {
       sessionId: string

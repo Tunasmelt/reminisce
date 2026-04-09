@@ -1,3 +1,4 @@
+-- Originally: 00000000000000_init.sql | Feature: core schema
 -- Users table is managed by Supabase Auth (auth.users)
 
 CREATE TABLE public.workspaces (

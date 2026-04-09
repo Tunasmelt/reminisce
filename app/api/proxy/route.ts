@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabase as clientSupabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization')

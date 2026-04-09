@@ -12,8 +12,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { getTimeUntilUTCReset } from '@/lib/wallet'
-import ReactMarkdown from 'react-markdown'
+import dynamic from 'next/dynamic'
+const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false })
+import { readSSEStream, stripPamAction } from '@/lib/stream-parser'
 import { useTheme } from '@/hooks/useTheme'
 import CustomSelect from '@/components/CustomSelect'
 
@@ -85,17 +88,50 @@ function actionLabel(type: string, payload: Record<string, unknown>): string {
 
 // ─── Model list ──────────────────────────────────────────────────────────────
 
-const MODELS = [
-  { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B ★', free: true },
-  { provider: 'groq',       model: 'llama-3.1-8b-instant',                    label: 'Llama 3.1 8B (Groq) ★', free: true },
-  { provider: 'cerebras',   model: 'llama3.1-8b',                              label: 'Llama 3.1 8B (Cerebras) ⚡★', free: true },
-  { provider: 'cerebras',   model: 'llama-3.3-70b',                            label: 'Llama 3.3 70B (Cerebras) ⚡★', free: true },
-  { provider: 'openrouter', model: 'mistralai/mistral-7b-instruct:free',        label: 'Mistral 7B ★', free: true },
-  { provider: 'openrouter', model: 'nvidia/llama-3.1-nemotron-super-49b-v1:free', label: 'Nemotron 49B ★', free: true },
-  { provider: 'mistral',    model: 'mistral-small-latest',                     label: 'Mistral Small', free: false },
-  { provider: 'mistral',    model: 'mistral-large-latest',                     label: 'Mistral Large', free: false },
-  { provider: 'anthropic',  model: 'claude-sonnet-4-20250514',                 label: 'Claude Sonnet', free: false },
-  { provider: 'gemini',     model: 'gemini-2.5-flash',                         label: 'Gemini 2.5 Flash', free: false },
+const FALLBACK_MODELS = [
+  // ── Free tier — Groq (fast LPU inference) ──────────────────────────────
+  { provider: 'groq', model: 'llama-3.1-8b-instant',                      label: 'Llama 3.1 8B',           free: true  },
+  { provider: 'groq', model: 'llama-3.3-70b-versatile',                   label: 'Llama 3.3 70B',           free: true  },
+  { provider: 'groq', model: 'meta-llama/llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout ⚡',        free: true  },
+  { provider: 'groq', model: 'meta-llama/llama-4-maverick',               label: 'Llama 4 Maverick',        free: true  },
+  { provider: 'groq', model: 'moonshotai/kimi-k2',                        label: 'Kimi K2',                 free: true  },
+  { provider: 'groq', model: 'qwen-qwen3-32b',                            label: 'Qwen3 32B',               free: true  },
+
+  // ── Free tier — Cerebras (fastest inference, 1M tokens/day) ────────────
+  { provider: 'cerebras', model: 'llama3.1-8b',                           label: 'Llama 3.1 8B (Cerebras) ⚡', free: true  },
+  { provider: 'cerebras', model: 'llama-4-scout-17b-16e-instruct',        label: 'Llama 4 Scout (Cerebras) ⚡', free: true  },
+  { provider: 'cerebras', model: 'gpt-oss-120b',                          label: 'GPT-OSS 120B (Cerebras) ⚡', free: true  },
+
+  // ── Free tier — SambaNova (ultra-fast RDU inference) ───────────────────
+  { provider: 'sambanova', model: 'DeepSeek-V3.2',                        label: 'DeepSeek V3.2',           free: true  },
+  { provider: 'sambanova', model: 'DeepSeek-R1-Distill-Llama-70B',        label: 'DeepSeek R1 Distill',     free: true  },
+  { provider: 'sambanova', model: 'Llama-4-Maverick-17B-128E-Instruct',   label: 'Llama 4 Maverick (SN)',   free: true  },
+  { provider: 'sambanova', model: 'Meta-Llama-3.3-70B-Instruct',          label: 'Llama 3.3 70B (SN)',      free: true  },
+
+  // ── Free tier — OpenRouter (20 RPM, `:free` suffix models) ────────────
+  { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (OR)',  free: true  },
+  { provider: 'openrouter', model: 'meta-llama/llama-4-maverick:free',        label: 'Llama 4 Maverick (OR)',free: true },
+  { provider: 'openrouter', model: 'deepseek/deepseek-chat-v3.1:free',        label: 'DeepSeek V3.1',        free: true },
+  { provider: 'openrouter', model: 'qwen/qwen3-235b-a22b:free',               label: 'Qwen3 235B',           free: true },
+
+  // ── Pro tier — Anthropic ───────────────────────────────────────────────
+  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001',            label: 'Claude Haiku 4.5',        free: false },
+  { provider: 'anthropic', model: 'claude-sonnet-4-20250514',             label: 'Claude Sonnet 4',         free: false },
+  { provider: 'anthropic', model: 'claude-opus-4-5-20251101',             label: 'Claude Opus 4',           free: false },
+
+  // ── Pro tier — Google ──────────────────────────────────────────────────
+  { provider: 'gemini',    model: 'gemini-2.5-flash',                     label: 'Gemini 2.5 Flash',        free: false },
+  { provider: 'gemini',    model: 'gemini-2.5-pro',                       label: 'Gemini 2.5 Pro',          free: false },
+
+  // ── Pro tier — OpenAI ──────────────────────────────────────────────────
+  { provider: 'openai',    model: 'gpt-4o-mini',                          label: 'GPT-4o Mini',             free: false },
+  { provider: 'openai',    model: 'gpt-4o',                               label: 'GPT-4o',                  free: false },
+  { provider: 'openai',    model: 'gpt-4.1',                              label: 'GPT-4.1',                 free: false },
+
+  // ── Pro tier — Mistral ─────────────────────────────────────────────────
+  { provider: 'mistral',   model: 'codestral-latest',                     label: 'Codestral',               free: false },
+  { provider: 'mistral',   model: 'mistral-small-latest',                 label: 'Mistral Small',           free: false },
+  { provider: 'mistral',   model: 'mistral-large-latest',                 label: 'Mistral Large',           free: false },
 ]
 
 const SLASH_COMMANDS = [
@@ -181,7 +217,7 @@ function ContextDrawer({
   return (
     <div style={{
       borderTop: '1px solid rgba(255,255,255,0.07)',
-      background: 'rgba(255,255,255,0.02)',
+      background: 'rgba(8,8,20,0.4)',
       flexShrink: 0,
       transition: 'max-height 0.3s ease',
       maxHeight: drawerOpen ? 320 : 40,
@@ -407,7 +443,7 @@ function ThreadItem({
         padding: '10px 12px', borderRadius: 10,
         marginBottom: 4, cursor: 'pointer',
         background: isActive ? hexToRgba(accent, 0.1) : 'transparent',
-        border: `1px solid ${isActive ? hexToRgba(accent, 0.25) : 'transparent'}`,
+        border: `1px solid ${isActive ? hexToRgba(accent, 0.2) : 'transparent'}`,
         transition: 'all 0.15s',
       }}
       onMouseEnter={e => {
@@ -746,9 +782,22 @@ function PAMContent() {
   const [mentionIndex,   setMentionIndex]   = useState(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const [selectedModel,    setSelectedModel]    = useState('llama-3.1-8b-instant')
-  const [selectedProvider, setSelectedProvider] = useState('groq')
+  const [models, setModels] = useState(FALLBACK_MODELS)
+  const [selectedModel, setSelectedModel] = useState(FALLBACK_MODELS[0])
 
+  useKeyboardShortcuts({
+    onPamSend: () => {
+      // Send if textarea is focused and has content
+      if (input.trim() && !isStreaming) {
+        sendMessage()
+      }
+    },
+    onEscape: () => {
+      setPendingAction(null)
+    },
+  })
+
+  const [hasScopeDrift, setHasScopeDrift] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // ── Init ───────────────────────────────────────────────────────────────────
@@ -758,12 +807,32 @@ function PAMContent() {
       const storedModel    = localStorage.getItem('wizard_model')
       const storedProvider = localStorage.getItem('wizard_provider')
       if (storedModel && storedProvider) {
-        const match = MODELS.find((m) => m.model === storedModel)
-        if (match) { setSelectedModel(match.model); setSelectedProvider(match.provider) }
+        const match = models.find((m) => m.model === storedModel)
+        if (match) { setSelectedModel(match) }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [models])
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      fetch('/api/keys/models', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data.models) && data.models.length > 0) {
+            setModels(data.models)
+            // If current selected model is no longer available, reset to first
+            if (!data.models.find((m: { model: string }) => m.model === selectedModel?.model)) {
+              setSelectedModel(data.models[0])
+            }
+          }
+        })
+        .catch(() => { /* keep FALLBACK_MODELS */ })
+    })
+  }, [selectedModel?.model])
 
   const loadProjectData = useCallback(async () => {
     const [
@@ -897,14 +966,14 @@ function PAMContent() {
       },
       body: JSON.stringify({
         projectId,
-        model:    selectedModel,
-        provider: selectedProvider,
+        model:    selectedModel.model,
+        provider: selectedModel.provider,
       }),
     })
     const data = await res.json()
     await loadThreads()
     return data.thread.id
-  }, [projectId, selectedModel, selectedProvider, loadThreads])
+  }, [projectId, selectedModel, loadThreads])
 
   const handleInputChange = useCallback((val: string) => {
     setInput(val)
@@ -973,6 +1042,7 @@ function PAMContent() {
     setMessages([])
     setPendingAction(null)
     setStreamText('')
+    setHasScopeDrift(false)
 
     // Brief pause to let UI settle
     await new Promise(r => setTimeout(r, 150))
@@ -983,6 +1053,7 @@ function PAMContent() {
     setBriefingLoading(false)
     setIsStreaming(true)
     setStreamText('')
+    setHasScopeDrift(false)
 
     // Optimistic user message
     const optimisticMsg: PamMessage = {
@@ -1009,33 +1080,20 @@ function PAMContent() {
         body: JSON.stringify({
           threadId,
           projectId,
-          provider: selectedProvider,
-          model:    selectedModel,
+          provider: selectedModel.provider,
+          model:    selectedModel.model,
           content:  briefingMessage,
         }),
       })
 
       if (!res.ok) throw new Error('Briefing failed')
 
-      const reader  = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let   full    = ''
+      let full = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        for (const line of chunk.split('\n')) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') continue
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.__pam_action) continue
-            full += parsed.choices?.[0]?.delta?.content ?? ''
-            setStreamText(full.replace(/\[PAM_ACTION\][\s\S]*?\[\/PAM_ACTION\]/g, '').trim())
-          } catch { /* partial */ }
-        }
+      for await (const chunk of readSSEStream(res.body!)) {
+        if (chunk.raw.__pam_action) continue
+        full += chunk.delta
+        setStreamText(stripPamAction(full))
       }
 
       await loadMessages(threadId)
@@ -1048,8 +1106,7 @@ function PAMContent() {
       setIsStreaming(false)
     }
   }, [briefingLoading, isStreaming, createThread, projectId,
-      selectedProvider, selectedModel, loadMessages, loadThreads,
-      setPendingAction])
+      selectedModel, loadMessages, loadThreads])
 
   // ── Send message ──────────────────────────────────────────────────────────
   const sendMessage = useCallback(async () => {
@@ -1059,6 +1116,7 @@ function PAMContent() {
     setInput('')
     setIsStreaming(true)
     setStreamText('')
+    setHasScopeDrift(false)
 
     // Ensure we have an active thread
     let threadId = activeThread
@@ -1092,8 +1150,8 @@ function PAMContent() {
         body: JSON.stringify({
           threadId,
           projectId,
-          provider: selectedProvider,
-          model:    selectedModel,
+          provider: selectedModel.provider,
+          model:    selectedModel.model,
           content:  text,
         }),
       })
@@ -1105,36 +1163,28 @@ function PAMContent() {
       }
       if (!res.ok) throw new Error('PAM request failed')
 
-      const reader  = res.body!.getReader()
-      const decoder = new TextDecoder()
-      let   full    = ''
-      let   pamAction: PendingAction | null = null
+      let full = ''
+      let pamAction: PendingAction | null = null
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') continue
-          try {
-            const parsed = JSON.parse(data)
-            // PAM action meta event
-            if (parsed.__pam_action) {
-              pamAction = {
-                messageId:     '',   // filled after reload
-                actionType:    parsed.actionType,
-                actionPayload: parsed.actionPayload,
-              }
-              continue
-            }
-            full += parsed.choices?.[0]?.delta?.content ?? ''
-            setStreamText(full.replace(/\[PAM_ACTION\][\s\S]*?\[\/PAM_ACTION\]/g, '').trim())
-          } catch { /* partial */ }
+      for await (const chunk of readSSEStream(res.body!)) {
+        if (chunk.raw.__pam_meta && chunk.raw.scopeDrift) {
+      setHasScopeDrift(true)
+      continue
+    }
+    if (chunk.raw.__agent_meta && chunk.raw.scopeDrift) {
+      setHasScopeDrift(true)
+      continue
+    }
+    if (chunk.raw.__pam_action) {
+          pamAction = {
+            messageId:     '',
+            actionType:    chunk.raw.actionType as string,
+            actionPayload: chunk.raw.actionPayload as Record<string, unknown>,
+          }
+          continue
         }
+        full += chunk.delta
+        setStreamText(stripPamAction(full))
       }
 
       // Reload messages from DB (includes saved assistant message with id)
@@ -1161,7 +1211,7 @@ function PAMContent() {
     } finally {
       setIsStreaming(false)
     }
-  }, [input, isStreaming, activeThread, createThread, projectId, selectedProvider, selectedModel, loadMessages, loadThreads])
+  }, [input, isStreaming, activeThread, createThread, projectId, selectedModel, loadMessages, loadThreads])
 
   // ── Handle action confirm/reject ──────────────────────────────────────────
   const handleAction = useCallback(async (confirmed: boolean) => {
@@ -1226,8 +1276,8 @@ function PAMContent() {
         },
         body: JSON.stringify({
           threadId,
-          provider: selectedProvider,
-          model:    selectedModel,
+          provider: selectedModel.provider,
+          model:    selectedModel.model,
         }),
       }).catch(() => { /* non-fatal */ })
     })
@@ -1237,7 +1287,7 @@ function PAMContent() {
     }
     await loadThreads()
     toast.success('Thread archived')
-  }, [activeThread, loadThreads, selectedProvider, selectedModel])
+  }, [activeThread, loadThreads, selectedModel])
 
   // ── Rename thread ─────────────────────────────────────────────────────────
   const renameThread = useCallback(async (threadId: string, title: string) => {
@@ -1253,9 +1303,9 @@ function PAMContent() {
     await loadThreads()
   }, [loadThreads])
 
-  const modelOptions = MODELS.map(m => ({ value: m.model, label: m.label }))
+  const modelOptions = models.map(m => ({ value: m.model, label: m.label }))
 
-  const currentModelMeta = MODELS.find(m => m.model === selectedModel)
+  const currentModelMeta = models.find(m => m.model === selectedModel.model)
 
   if (loading) return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#07070f' }}>
@@ -1268,7 +1318,7 @@ function PAMContent() {
       display: 'flex',
       flexDirection: 'column',
       height: 'calc(100vh - 68px)',
-      background: 'linear-gradient(160deg,rgba(var(--accent-rgb),0.03) 0%,transparent 50%),#07070f',
+      background: '#05050f',
     }}>
       <title>{`PAM — ${project?.name ?? 'Project'}`}</title>
 
@@ -1285,10 +1335,10 @@ function PAMContent() {
 
       {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div style={{
-        height: 52, borderBottom: '1px solid rgba(255,255,255,0.08)',
+        height: 52, borderBottom: '1px solid rgba(255,255,255,0.07)',
         display: 'flex', alignItems: 'center',
         padding: '0 16px', gap: 10, flexShrink: 0,
-        background: 'rgba(8,8,20,0.8)',
+        background: 'rgba(8,8,20,0.5)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
       }}>
@@ -1310,12 +1360,11 @@ function PAMContent() {
 
         {/* Model selector */}
         <CustomSelect
-          value={selectedModel}
+          value={selectedModel.model}
           onChange={val => {
-            const m = MODELS.find((x) => x.model === val)
+            const m = models.find((x) => x.model === val)
             if (m) {
-              setSelectedModel(m.model)
-              setSelectedProvider(m.provider)
+              setSelectedModel(m)
               if (typeof window !== 'undefined') {
                 localStorage.setItem('wizard_model', m.model)
                 localStorage.setItem('wizard_provider', m.provider)
@@ -1351,8 +1400,8 @@ function PAMContent() {
                 },
                 body: JSON.stringify({
                   threadId: activeThread,
-                  provider: selectedProvider,
-                  model:    selectedModel,
+                  provider: selectedModel.provider,
+                  model:    selectedModel.model,
                 }),
               }).catch(() => { /* non-fatal */ })
             }
@@ -1384,9 +1433,11 @@ function PAMContent() {
         {/* LEFT — Thread list */}
         <div style={{
           width: 240, flexShrink: 0,
-          borderRight: '1px solid rgba(255,255,255,0.08)',
+          borderRight: '1px solid rgba(255,255,255,0.07)',
           display: 'flex', flexDirection: 'column',
-          background: 'rgba(255,255,255,0.015)',
+          background: 'rgba(8,8,20,0.6)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
           overflow: 'hidden',
         }}>
           <div style={{
@@ -1576,6 +1627,41 @@ function PAMContent() {
                 >×</button>
               </div>
             )}
+            {/* Global Scope Drift Warning */}
+            {hasScopeDrift && (
+              <div style={{
+                background: 'rgba(245,158,11,0.08)',
+                border: '1px solid rgba(245,158,11,0.25)',
+                borderRadius: 14, padding: '12px 16px',
+                display: 'flex', alignItems: 'center',
+                gap: 12, flexShrink: 0,
+                borderLeft: '4px solid #f59e0b',
+                animation: 'slideInDown 0.3s ease-out',
+                marginBottom: 4,
+              }}>
+                <AlertCircle size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', marginBottom: 2 }}>
+                    Project Scope Warning
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
+                    PAM has detected that this conversation is drifting outside the project&apos;s defined v1 scope.
+                    Ensure you update your blueprint if you want to permanently include these changes.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setHasScopeDrift(false)}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: 'rgba(255,255,255,0.3)', cursor: 'pointer',
+                    padding: 4,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             {/* Empty state */}
             {!activeThread && messages.length === 0 && !isStreaming && (
               <div style={{
@@ -1639,9 +1725,9 @@ function PAMContent() {
                     maxWidth: '78%',
                     background: isUser
                       ? hexToRgba(accent, 0.1)
-                      : 'rgba(255,255,255,0.045)',
-                    border: `1px solid ${isUser ? hexToRgba(accent, 0.2) : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      : 'rgba(255,255,255,0.025)',
+                    border: `1px solid ${isUser ? hexToRgba(accent, 0.2) : 'rgba(255,255,255,0.06)'}`,
+                    borderRadius: isUser ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
                     padding: '12px 16px',
                     backdropFilter: 'blur(8px)',
                     WebkitBackdropFilter: 'blur(8px)',
@@ -1671,10 +1757,31 @@ function PAMContent() {
                       className="prose prose-invert prose-sm max-w-none prose-code:text-[var(--accent-primary)] prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10 prose-code:before:content-none prose-code:after:content-none"
                       style={{ fontSize: 13, color: isUser ? '#fff' : 'rgba(255,255,255,0.88)', lineHeight: 1.75 }}
                     >
-                      {isUser
-                        ? <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                        : <ReactMarkdown>{msg.content}</ReactMarkdown>
-                      }
+                      {isUser ? (
+                        <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+                      ) : (() => {
+                        const content = msg.content || ''
+                        const alerts: string[] = []
+                        let cleanContent = content
+
+                        const re = /⚠️\s*Scope alert:[^\n]*/gi
+                        let match
+                        while ((match = re.exec(content)) !== null) {
+                          alerts.push(match[0])
+                          cleanContent = cleanContent.replace(match[0], '').trim()
+                        }
+
+                        return (
+                          <div>
+                            {alerts.map((alert, i) => (
+                              <ScopeAlertBanner key={i} text={alert} />
+                            ))}
+                            {cleanContent && (
+                              <ReactMarkdown>{cleanContent}</ReactMarkdown>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
 
                     {/* Timestamp */}
@@ -1700,18 +1807,33 @@ function PAMContent() {
                 }}>✦</div>
                 <div style={{
                   maxWidth: '78%',
-                  background: 'rgba(255,255,255,0.045)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '16px 16px 16px 4px',
+                  background: 'rgba(255,255,255,0.025)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '4px 18px 18px 18px',
                   padding: '12px 16px',
                   fontSize: 13, color: 'rgba(255,255,255,0.88)', lineHeight: 1.75,
                   minWidth: 60,
                 }}>
-                  {streamText ? (
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{streamText}</ReactMarkdown>
-                    </div>
-                  ) : (
+                  {streamText ? (() => {
+                    const alerts: string[] = []
+                    let cleanStream = streamText
+                    const re = /⚠️\s*Scope alert:[^\n]*/gi
+                    let match
+                    while ((match = re.exec(streamText)) !== null) {
+                      alerts.push(match[0])
+                      cleanStream = cleanStream.replace(match[0], '').trim()
+                    }
+                    return (
+                      <div>
+                        {alerts.map((a, i) => <ScopeAlertBanner key={i} text={a} />)}
+                        {cleanStream && (
+                          <div className="prose prose-invert prose-sm max-w-none">
+                            <ReactMarkdown>{cleanStream}</ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })() : (
                     <div style={{ display: 'flex', gap: 4 }}>
                       {[0, 0.2, 0.4].map((d, i) => (
                         <div key={i} style={{
@@ -1734,10 +1856,10 @@ function PAMContent() {
           {pendingAction && !isStreaming && (
             <div style={{
               margin: '0 20px 8px',
-              padding: '12px 16px',
-              background: hexToRgba(accent, 0.08),
-              border: `1px solid ${hexToRgba(accent, 0.3)}`,
-              borderRadius: 12,
+              padding: '14px 18px',
+              background: hexToRgba(accent, 0.06),
+              border: `1px solid ${hexToRgba(accent, 0.25)}`,
+              borderRadius: 14,
               display: 'flex', alignItems: 'center', gap: 12,
               flexShrink: 0,
             }}>
@@ -1795,8 +1917,8 @@ function PAMContent() {
             <div
               data-pam-input="true"
               style={{
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-                padding: '12px 20px',
+                borderTop: '1px solid rgba(255,255,255,0.07)',
+                padding: '12px 16px',
                 background: 'rgba(8,8,20,0.8)',
                 backdropFilter: 'blur(20px)',
                 WebkitBackdropFilter: 'blur(20px)',
@@ -1906,10 +2028,10 @@ function PAMContent() {
                 rows={1}
                 style={{
                   flex: 1, resize: 'none',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${focused ? accent : 'rgba(255,255,255,0.1)'}`,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${focused ? accent : 'rgba(255,255,255,0.09)'}`,
                   boxShadow: focused ? `0 0 0 3px ${hexToRgba(accent, 0.1)}` : 'none',
-                  borderRadius: 10, padding: '10px 14px',
+                  borderRadius: 14, padding: '12px 16px',
                   fontSize: 13, color: '#fff',
                   outline: 'none',
                   minHeight: 42, maxHeight: 140,
@@ -1961,6 +2083,46 @@ function PAMContent() {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Scope alert component ───────────────────────────────────────────────────
+
+function ScopeAlertBanner({
+  text,
+}: {
+  text: string
+}) {
+  // Extract just the scope alert text (everything after "⚠️ Scope alert:")
+  const alertText = text.replace(/⚠️\s*Scope alert:\s*/i, '').trim()
+
+  return (
+    <div style={{
+      margin: '4px 0 12px',
+      padding: '12px 16px',
+      background: 'rgba(245,158,11,0.07)',
+      border: '1px solid rgba(245,158,11,0.25)',
+      borderRadius: 12,
+      borderLeft: '3px solid #f59e0b',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
+      }}>
+        <span style={{ fontSize: 14 }}>⚠️</span>
+        <span style={{
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: '#f59e0b',
+        }}>
+          Scope alert
+        </span>
+      </div>
+      <p style={{
+        fontSize: 13, color: 'rgba(255,255,255,0.7)',
+        lineHeight: 1.6, margin: 0,
+      }}>
+        {alertText}
+      </p>
     </div>
   )
 }

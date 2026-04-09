@@ -81,6 +81,10 @@ export default function DashboardPage() {
   const [isFsSupported, setIsFsSupported] = useState(false)
 
   const [isMobile, setIsMobile] = useState(false)
+  const [dismissedOnboarding, setDismissedOnboarding] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('reminisce_onboarding_dismissed') === '1'
+  })
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check()
@@ -310,10 +314,10 @@ export default function DashboardPage() {
         }}>
           <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 20, marginBottom: 32 }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.25)', marginBottom: 8, textTransform: 'uppercase', fontWeight: 700 }}>
-                Your Workspace
+              <div style={{ fontSize: 9, letterSpacing: '0.22em', color: 'rgba(255,255,255,0.25)', marginBottom: 10, textTransform: 'uppercase' as const, fontWeight: 800 }}>
+                Workspace
               </div>
-              <h1 style={{ fontSize: isMobile ? 36 : 'clamp(32px, 4vw, 52px)', fontWeight: 900, letterSpacing: '-0.03em', color: '#fff', lineHeight: 1, margin: 0 }}>
+              <h1 style={{ fontSize: isMobile ? 32 : 'clamp(28px, 3.5vw, 48px)', fontWeight: 900, letterSpacing: '-0.04em', color: '#fff', lineHeight: 1, margin: 0 }}>
                 Projects
               </h1>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginTop: 8 }}>
@@ -456,6 +460,84 @@ export default function DashboardPage() {
           )}
         </section>
 
+        {/* ── First-run onboarding ─────────────────────────────────── */}
+        {!dismissedOnboarding && projects.length === 0 && (
+          <div style={{
+            marginBottom: 32,
+            background: hexToRgba(accent, 0.05),
+            border: `1px solid ${hexToRgba(accent, 0.18)}`,
+            borderRadius: 20, padding: '28px 32px',
+            position: 'relative',
+          }}>
+            {/* Dismiss button */}
+            <button
+              onClick={() => {
+                localStorage.setItem('reminisce_onboarding_dismissed', '1')
+                setDismissedOnboarding(true)
+              }}
+              style={{
+                position: 'absolute', top: 16, right: 16,
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'rgba(255,255,255,0.25)', fontSize: 18, lineHeight: 1,
+              }}
+            >×</button>
+
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase', color: accent, marginBottom: 12 }}>
+              Get started
+            </div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em', margin: '0 0 8px' }}>
+              Three steps to your first AI-ready project
+            </h2>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: '0 0 24px', lineHeight: 1.6 }}>
+              Reminisce keeps your project context structured so every AI call knows exactly what you&apos;re building.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 14 }}>
+              {[
+                {
+                  step: '01',
+                  title: 'Create a project',
+                  desc: 'Click "New project" above. Give it a name and optionally paste your GitHub repo URL.',
+                  done: projects.length > 0,
+                },
+                {
+                  step: '02',
+                  title: 'Run the Wizard',
+                  desc: 'Open your project → Wizard. Describe what you\'re building. Reminisce generates your entire blueprint in one run.',
+                  done: false,
+                },
+                {
+                  step: '03',
+                  title: 'Connect your folder',
+                  desc: 'In your project overview, click "Connect Folder" to link your local repo. Context files sync automatically.',
+                  done: false,
+                },
+              ].map((item, i) => (
+                <div key={i} style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 14, padding: '18px 20px',
+                }}>
+                  <div style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
+                    color: item.done ? '#10b981' : hexToRgba(accent, 0.6),
+                    marginBottom: 8,
+                    textTransform: 'uppercase',
+                  }}>
+                    {item.done ? '✓ Done' : `Step ${item.step}`}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 6 }}>
+                    {item.title}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.38)', lineHeight: 1.6 }}>
+                    {item.desc}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* SEARCH BAR */}
         <div style={{
           marginBottom: 20,
@@ -472,11 +554,12 @@ export default function DashboardPage() {
               backdropFilter: 'blur(12px)',
               WebkitBackdropFilter: 'blur(12px)',
               border: '1px solid rgba(255,255,255,0.09)',
-              borderRadius: 12,
+              borderRadius: 14,
               padding: '12px 16px 12px 44px',
               fontSize: 13, color: '#fff',
               outline: 'none', fontFamily: 'inherit',
               boxSizing: 'border-box',
+              transition: 'border-color 0.2s',
             }}
             onFocus={e => {
               e.currentTarget.style.borderColor = accent
@@ -507,15 +590,15 @@ export default function DashboardPage() {
         </div>
         <div style={{
           display: 'flex',
-          gap: 0,
+          gap: 4,
           borderBottom: '1px solid rgba(255,255,255,0.06)',
-          marginBottom: 32,
+          marginBottom: 28,
           overflowX: 'auto'
         }} className="hide-scrollbar">
           <button
             onClick={() => setSelectedWS('all')}
             style={{
-              padding: '10px 20px',
+              padding: '9px 18px',
               fontSize: 12,
               fontWeight: 500,
               letterSpacing: 'normal',
@@ -536,7 +619,7 @@ export default function DashboardPage() {
               key={w.id}
               onClick={() => setSelectedWS(w.id)}
               style={{
-                padding: '10px 20px',
+                padding: '9px 18px',
                 fontSize: 12,
                 fontWeight: 500,
                 letterSpacing: 'normal',
@@ -568,29 +651,28 @@ export default function DashboardPage() {
                 key={p.id}
                 onClick={() => router.push(`/dashboard/projects/${p.id}`)}
                 style={{
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 16,
-                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 20,
+                  background: 'rgba(255,255,255,0.025)',
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
-                  padding: '28px 28px 24px',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+                  padding: '28px',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
-                  position: 'relative',
-                  overflow: 'hidden'
+                  position: 'relative' as const,
+                  overflow: 'hidden',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.borderColor = hexToRgba(accent, 0.35)
                   e.currentTarget.style.background = hexToRgba(accent, 0.04)
-                  e.currentTarget.style.transform = 'translateY(-4px)'
-                  e.currentTarget.style.boxShadow = `0 12px 40px rgba(0,0,0,0.3), 0 0 0 1px ${hexToRgba(accent, 0.1)}`
+                  e.currentTarget.style.transform = 'translateY(-3px)'
+                  e.currentTarget.style.boxShadow = `0 16px 48px rgba(0,0,0,0.3), 0 0 0 1px ${hexToRgba(accent, 0.08)}`
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.025)'
                   e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.boxShadow = '0 4px 24px rgba(0,0,0,0.2)'
+                  e.currentTarget.style.boxShadow = 'none'
                 }}
               >
                 {/* Top row: workspace badge + active dot */}
@@ -636,9 +718,9 @@ export default function DashboardPage() {
 
                 {/* Project name */}
                 <h2 style={{
-                  fontSize: 20, fontWeight: 700,
-                  letterSpacing: '-0.01em', color: '#fff',
-                  margin: '0 0 4px',
+                  fontSize: 18, fontWeight: 700,
+                  letterSpacing: '-0.02em', color: '#fff',
+                  margin: '0 0 6px', lineHeight: 1.2,
                 }}>
                   {p.name}
                 </h2>
@@ -796,18 +878,13 @@ export default function DashboardPage() {
           <div
             onClick={() => setIsProjectOpen(true)}
             style={{
-              border: '1px dashed rgba(255,255,255,0.1)',
-              borderRadius: 16,
-              background: 'rgba(255,255,255,0.01)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 12,
-              minHeight: 200,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
+              border: '1px dashed rgba(255,255,255,0.08)',
+              borderRadius: 20,
+              background: 'transparent',
+              display: 'flex', flexDirection: 'column' as const,
+              alignItems: 'center', justifyContent: 'center',
+              gap: 10, minHeight: 220,
+              cursor: 'pointer', transition: 'all 0.2s',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.borderColor = hexToRgba(accent, 0.3)
@@ -825,14 +902,11 @@ export default function DashboardPage() {
           </div>
         </div>      {(
           <div style={{
-            marginTop: 48,
-            padding: '24px 28px',
-            background: 'rgba(255,255,255,0.03)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 16,
-            boxShadow: '0 4px 24px rgba(0,0,0,0.15)',
+            marginTop: 40,
+            padding: '20px 24px',
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 18,
           }}>
             <div style={{
               display: 'flex',

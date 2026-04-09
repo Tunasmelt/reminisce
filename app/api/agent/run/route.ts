@@ -3,6 +3,8 @@ import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } f
 import { callAI, userHasOwnKey } from '@/lib/ai-client'
 import { deductCost, refundCost, ensureWallet, awardCoins } from '@/lib/wallet'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization')
@@ -12,7 +14,14 @@ export async function POST(req: Request) {
     const { data: { user }, error: authError } = await clientSupabase.auth.getUser(token)
     if (!user || authError) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+
+    // Check if user is banned
+    const { isUserBanned } = await import('@/lib/supabase')
+    if (await isUserBanned(user.id))
+      return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
+
     const { projectId, featureId, provider, model, prompt: directPrompt } = await req.json()
+
     
     if (!projectId || !provider || !model) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
@@ -113,6 +122,29 @@ ${contextText}
 
     if (runErr) throw runErr
 
+    // ── Load product scope for drift detection ────────────────────────────
+    const { data: scopeCtx } = await supabase
+      .from('contexts')
+      .select('content, summary')
+      .eq('project_id', projectId)
+      .eq('file_path', 'reminisce/context/product-scope.md')
+      .maybeSingle()
+
+    const productScope = scopeCtx?.content
+      ? scopeCtx.content.slice(0, 1200)
+      : scopeCtx?.summary || null
+
+    let systemPrompt = 'You are an expert software developer. Implement the requested feature completely and correctly. Include full file paths, complete code, and brief explanations. Format code in markdown code blocks.'
+
+    if (productScope) {
+      systemPrompt += `\n\nSCOPE AWARENESS:
+The project is bound by the following scope:
+---
+${productScope}
+---
+If the request or your planned implementation drifts outside this scope, you MUST begin your response with "⚠️ Scope alert:" followed by a concise 1-sentence warning about why it drifts.`
+    }
+
     let aiRes: Response
     try {
       // f. Call AI with Stream
@@ -124,7 +156,7 @@ ${contextText}
         messages: [
           {
             role: 'system',
-            content: 'You are an expert software developer. Implement the requested feature completely and correctly. Include full file paths, complete code, and brief explanations. Format code in markdown code blocks.'
+            content: systemPrompt
           },
           {
             role: 'user',
@@ -168,11 +200,20 @@ ${contextText}
                 if (dataStr === '[DONE]') continue
                 try {
                   const parsed = JSON.parse(dataStr)
-                  fullOutput += parsed.choices?.[0]?.delta?.content || ''
+                  const content = parsed.choices?.[0]?.delta?.content || ''
+                  fullOutput += content
                 } catch {}
               }
             }
           }
+
+          const hasDrift = fullOutput.includes('⚠️ Scope alert:')
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({ __agent_meta: true, scopeDrift: hasDrift })}\n\n`
+            )
+          )
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
 
           // h. Update Supabase on Completion
           await supabase

@@ -60,10 +60,14 @@ export default function CustomSelect({
     return () => window.removeEventListener('keydown', handler)
   }, [open])
 
-  // Close on scroll (repositioning not implemented — simpler to close)
+  // Close on page-level scroll — but NOT on scroll within the dropdown
   useEffect(() => {
     if (!open) return
-    const handler = () => setOpen(false)
+    const handler = (e: Event) => {
+      // If the scroll target is the dropdown itself or a child, ignore it
+      if (dropRef.current && dropRef.current.contains(e.target as Node)) return
+      setOpen(false)
+    }
     window.addEventListener('scroll', handler, true)
     return () => window.removeEventListener('scroll', handler, true)
   }, [open])
@@ -143,6 +147,8 @@ export default function CustomSelect({
             maxHeight: 280,
             overflowY: 'auto',
             overflowX: 'hidden',
+            scrollbarWidth: 'thin' as const,
+            scrollbarColor: 'rgba(255,255,255,0.15) transparent',
           }}
         >
           {options.map(option => {

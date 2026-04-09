@@ -3,6 +3,8 @@ import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyProjectAccess } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies })
   const { data: { session } } = await supabase.auth.getSession()

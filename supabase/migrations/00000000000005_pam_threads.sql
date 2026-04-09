@@ -1,3 +1,4 @@
+-- Originally: 00000000000005_init.sql | Feature: pam threads
 -- ============================================================
 -- PAM (Project Action Manager) — Phase 1 Schema
 -- Safe to run multiple times (all IF NOT EXISTS)

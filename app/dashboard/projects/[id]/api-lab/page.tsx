@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useParams } from 'next/navigation'
-import { } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import CustomSelect from '@/components/CustomSelect'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -44,6 +44,16 @@ function ApiLabContent() {
   
   const [response, setResponse] = useState<ApiRes | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
+  const [isSuggesting, setIsSuggesting] = useState(false)
+
+  // ── Mobile detection ────────────────────────────────────────────────────────
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const METHOD_OPTIONS = [
     { value: 'GET',    label: 'GET',    color: '#10b981' },
@@ -79,6 +89,80 @@ function ApiLabContent() {
     } catch { toast.error('Signal transmission failure') }
     finally { setIsExecuting(false) }
   }
+  
+  const handleAiSuggest = async () => {
+    if (!project || isSuggesting) return
+    setIsSuggesting(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      // Fetch project architecture context for the suggestion
+      const { data: ctxData } = await supabase
+        .from('contexts')
+        .select('content, file_path')
+        .eq('project_id', projectId)
+        .in('file_path', [
+          'reminisce/context/architecture.md',
+          'reminisce/workflow/features.md',
+        ])
+        .limit(2)
+
+      const contextBlock = (ctxData || [])
+        .map(c => `### ${c.file_path}\n${(c.content || '').slice(0, 800)}`)
+        .join('\n\n')
+
+      const res = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          provider: 'groq',
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an API testing assistant. Based on the project context, 
+suggest a realistic API endpoint to test. Reply with ONLY a JSON object: 
+{ "method": "GET"|"POST"|"PUT"|"DELETE"|"PATCH", "url": "https://...", "headers": [{"key":"...","value":"..."}], "body": "..." }
+No explanation. No markdown. Just the JSON object.`,
+            },
+            {
+              role: 'user',
+              content: `Project: ${project.name}\n\n${contextBlock}\n\nSuggest one API endpoint to test.`,
+            },
+          ],
+          max_tokens: 300,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Suggest failed')
+      const data = await res.json()
+      const text = data.content?.[0]?.text || data.choices?.[0]?.message?.content || ''
+      
+      try {
+        const clean = text.replace(/```json|```/g, '').trim()
+        const suggestion = JSON.parse(clean)
+        if (suggestion.method) setMethod(suggestion.method)
+        if (suggestion.url) setUrl(suggestion.url)
+        if (suggestion.headers?.length) {
+          setHeaders(suggestion.headers.filter((h: {key:string;value:string}) => h.key))
+        }
+        if (suggestion.body) setBody(suggestion.body)
+      } catch {
+        // If JSON parse fails, at least put raw text as a hint
+        toast.error('Could not parse suggestion — check console')
+        console.log('AI suggest raw:', text)
+      }
+    } catch (err) {
+      toast.error('AI suggest failed')
+      console.error(err)
+    } finally {
+      setIsSuggesting(false)
+    }
+  }
 
   const updateHeader = (index: number, key: string, value: string) => {
     const next = [...headers]; next[index] = { key, value }; setHeaders(next)
@@ -89,31 +173,31 @@ function ApiLabContent() {
   return (
     <div style={{
       display: 'flex',
-      height: 'calc(100vh - 68px)',
-      background: 'linear-gradient(160deg, rgba(var(--accent-rgb),0.04) 0%, transparent 50%), #07070f',
+      flexDirection: isMobile ? 'column' : 'row',
+      height: isMobile ? 'auto' : 'calc(100vh - 68px)',
+      background: '#05050f',
     }}>
       <title>{`Reminisce — API Lab — ${project?.name}`}</title>
 
       {/* LEFT PANEL: REQUEST EDITOR */}
       <div style={{ 
-        width: 480, 
+        width: isMobile ? '100%' : 480, 
         flexShrink: 0,
-        borderRight: '1px solid rgba(255,255,255,0.08)',
-        padding: 28,
+        borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.07)',
+        borderBottom: isMobile ? '1px solid rgba(255,255,255,0.07)' : 'none',
+        padding: 24,
         display: 'flex',
         flexDirection: 'column',
-        gap: 20,
+        gap: 24,
         background: 'rgba(255,255,255,0.025)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        maxHeight: isMobile ? '50vh' : undefined,
         overflowY: 'auto',
       }}>
         <h2 style={{
-          fontSize: 10, fontWeight: 800,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.4)',
-          margin: 0
+          fontSize: 9, fontWeight: 800, letterSpacing: '0.14em',
+          textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)',
+          margin: 0, padding: '0 0 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
         }}>
           Request
         </h2>
@@ -151,53 +235,66 @@ function ApiLabContent() {
         {/* Tabs */}
         <div>
           <div style={{
-            display: 'flex', gap: 20,
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex',
+            borderBottom: '1px solid rgba(255,255,255,0.07)',
             marginBottom: 20,
-            background: 'rgba(255,255,255,0.02)',
-            borderRadius: '8px 8px 0 0',
-            padding: '0 4px',
           }}>
-            {['Headers', 'Body', 'Auth'].map(tab => (
-              <button 
-                key={tab} 
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '12px 0',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: `2px solid ${activeTab === tab ? accent : 'transparent'}`,
-                  color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.3)',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  letterSpacing: 'normal',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {tab}
-              </button>
-            ))}
+            {['Headers', 'Body', 'Auth'].map(tab => {
+              const isTab = activeTab === tab
+              return (
+                <button 
+                  key={tab} 
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    padding: '11px 0',
+                    marginRight: 20,
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: isTab ? `2px solid ${accent}` : '2px solid transparent',
+                    color: isTab ? '#fff' : 'rgba(255,255,255,0.4)',
+                    fontSize: 12,
+                    fontWeight: isTab ? 700 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    marginBottom: -1,
+                  }}
+                >
+                  {tab}
+                </button>
+              )
+            })}
           </div>
 
           <div style={{ minHeight: 200 }}>
             {activeTab === 'Headers' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {headers.map((h, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8 }}>
+                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                     <input 
                       placeholder="KEY" 
                       value={h.key} 
                       onChange={(e) => updateHeader(i, e.target.value, h.value)}
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#fff', fontFamily: 'monospace', outline: 'none' }}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '11px 14px', fontSize: 13, color: '#fff', fontFamily: 'ui-monospace, monospace', outline: 'none' }}
                     />
                     <input 
                       placeholder="VALUE" 
                       value={h.value} 
                       onChange={(e) => updateHeader(i, h.key, e.target.value)}
-                      style={{ flex: 1, background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#fff', fontFamily: 'monospace', outline: 'none' }}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 12, padding: '11px 14px', fontSize: 13, color: '#fff', fontFamily: 'ui-monospace, monospace', outline: 'none' }}
                     />
+                    <button
+                      onClick={() => {
+                        const next = headers.filter((_, idx) => idx !== i)
+                        setHeaders(next.length ? next : [{ key: '', value: '' }])
+                      }}
+                      style={{
+                        background: 'rgba(248,113,113,0.08)',
+                        border: '1px solid rgba(248,113,113,0.2)',
+                        borderRadius: 8, padding: '8px', cursor: 'pointer',
+                      }}
+                    >
+                      <Trash2 size={13} color="#f87171" />
+                    </button>
                   </div>
                 ))}
                 <button 
@@ -245,48 +342,61 @@ function ApiLabContent() {
             disabled={isExecuting}
             style={{
               background: accent,
-              border: 'none',
+              color: '#000',
               borderRadius: 999,
-              padding: '14px',
-              fontSize: 11,
+              padding: '11px 28px',
+              fontSize: 13,
               fontWeight: 800,
-              letterSpacing: 'normal',
-              textTransform: 'none',
-              boxShadow: `0 0 20px ${hexToRgba(accent, 0.3)}`,
+              border: 'none',
+              cursor: 'pointer',
+              width: '100%',
+              boxShadow: `0 0 24px ${hexToRgba(accent, 0.35)}`,
               transition: 'all 0.15s',
-              cursor: 'pointer'
             }}
           >
-          {isExecuting ? 'Sending...' : 'Send request'}
-        </button>
+            {isExecuting ? 'Sending...' : 'Send request'}
+          </button>
       </div>
 
       {/* RIGHT PANEL: RESPONSE VIEWER */}
-      <div style={{ flex: 1, padding: 28, display: 'flex', flexDirection: 'column', gap: 20, background: 'transparent', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        background: 'transparent', 
+        overflowY: 'auto', 
+        borderLeft: isMobile ? 'none' : '1px solid rgba(255,255,255,0.07)',
+        minHeight: isMobile ? '50vh' : undefined,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(8,8,20,0.5)' }}>
           <h2 style={{
-            fontSize: 10, fontWeight: 800,
-            letterSpacing: '0.1em',
+            fontSize: 9, fontWeight: 800,
+            letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.35)',
+            color: 'rgba(255,255,255,0.25)',
             margin: 0,
           }}>
             Response
           </h2>
-          <button style={{ 
-            background: hexToRgba(accent, 0.08),
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            border: `1px solid ${hexToRgba(accent, 0.3)}`,
-            color: accent,
-            borderRadius: 999,
-            padding: '7px 20px',
-            fontSize: 11,
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.15s',
-          }}>
-            AI suggest
+          <button
+            onClick={handleAiSuggest}
+            disabled={isSuggesting}
+            style={{ 
+              background: hexToRgba(accent, 0.08),
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              border: `1px solid ${hexToRgba(accent, 0.3)}`,
+              color: isSuggesting ? 'rgba(255,255,255,0.3)' : accent,
+              borderRadius: 999,
+              padding: '7px 20px',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: isSuggesting ? 'not-allowed' : 'pointer',
+              transition: 'all 0.15s',
+              opacity: isSuggesting ? 0.6 : 1,
+            }}
+          >
+            {isSuggesting ? 'Thinking…' : 'AI suggest'}
           </button>
         </div>
 
@@ -295,18 +405,10 @@ function ApiLabContent() {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            padding: '24px',
+            padding: '40px 24px',
             gap: 16,
           }}>
-            
-            {/* Helpful header */}
-            <div style={{
-              fontSize: 11, fontWeight: 500,
-              letterSpacing: 'normal',
-              textTransform: 'none',
-              color: 'rgba(255,255,255,0.45)',
-              marginBottom: 4,
-            }}>
+            <div style={{ textAlign: 'center', padding: '80px 32px', color: 'rgba(255,255,255,0.2)' }}>
               Example requests
             </div>
         
@@ -436,10 +538,16 @@ function ApiLabContent() {
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 24 }}>
             {/* Status Line */}
-            <div style={{ display: 'flex', gap: 32, padding: '16px 24px', background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', gap: 32, padding: '16px 24px', background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.06)', margin: 24 }}>
               <div>
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 4 }}>Status</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: response.status < 300 ? '#10b981' : '#ef4444' }}>{response.status} {response.statusText}</div>
+                <div style={{
+                  borderRadius: 8, padding: '4px 12px', fontSize: 13, fontWeight: 800,
+                  background: response.status < 300 ? 'rgba(16,185,129,0.1)' : response.status < 500 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                  color: response.status < 300 ? '#10b981' : response.status < 500 ? '#f59e0b' : '#ef4444'
+                }}>
+                  {response.status} {response.statusText}
+                </div>
               </div>
               <div>
                 <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 4 }}>Size</div>
@@ -454,18 +562,17 @@ function ApiLabContent() {
             {/* Body Viewer */}
             <div style={{
               flex: 1,
-              background: 'rgba(255,255,255,0.02)',
+              background: 'rgba(0,0,0,0.2)',
               border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 16,
-              padding: 24,
-              fontFamily: 'monospace',
+              borderRadius: 10,
+              padding: '16px 20px',
+              fontFamily: 'ui-monospace, monospace',
               fontSize: 12,
-              lineHeight: 1.6,
+              lineHeight: 1.7,
               color: 'rgba(255,255,255,0.8)',
               overflowY: 'auto',
-              scrollbarWidth: 'none'
             }}>
-              <pre>{(() => { try { return JSON.stringify(JSON.parse(response.body), null, 2) } catch { return response.body } })()}</pre>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{(() => { try { return JSON.stringify(JSON.parse(response.body), null, 2) } catch { return response.body } })()}</pre>
             </div>
           </div>
         )}

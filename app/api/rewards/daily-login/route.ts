@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase as clientSupabase } from '@/lib/supabase'
 import { awardCoins } from '@/lib/wallet'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('Authorization')

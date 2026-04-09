@@ -1,3 +1,4 @@
+-- Originally: 00000000000008_init.sql | Feature: context sync and git
 -- ============================================================
 -- Rehaul Phase 1 — Context Management, Git Integration,
 -- Prompt Library, and Editor Preference Schema

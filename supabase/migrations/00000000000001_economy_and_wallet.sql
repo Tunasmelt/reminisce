@@ -1,3 +1,4 @@
+-- Originally: 00000000000001_init.sql | Feature: economy and wallet
 -- ============================================================
 -- REMINISCE V2 — SUPABASE SCHEMA PATCH
 -- Run this entire script in Supabase → SQL Editor

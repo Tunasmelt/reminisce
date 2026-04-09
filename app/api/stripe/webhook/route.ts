@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic'
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) throw new Error('STRIPE_SECRET_KEY is not configured')
-  return new Stripe(key, { apiVersion: '2026-02-25.clover' })
+  // @ts-expect-error Stripe types are incorrectly hardcoded to a future version
+  return new Stripe(key, { apiVersion: '2024-06-20' })
 }
 
 export async function POST(req: Request) {
@@ -152,10 +153,32 @@ export async function POST(req: Request) {
       // ── SUBSCRIPTION CANCELLED ───────────────
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
-        const metadata = (subscription.metadata || {}) as Record<string, string>
-        const userId = metadata.supabase_user_id
+        const subscriptionId = subscription.id
 
-        if (!userId) break
+        // ── Primary: look up user by stripe_subscription_id in our DB ─────────
+        // This is reliable regardless of metadata presence.
+        let userId: string | null = null
+
+        const { data: planBySubId } = await supabase
+          .from('user_plans')
+          .select('user_id')
+          .eq('stripe_subscription_id', subscriptionId)
+          .maybeSingle()
+
+        if (planBySubId?.user_id) {
+          userId = planBySubId.user_id
+        } else {
+          // ── Fallback: metadata (works for subscriptions created after the fix) ─
+          const metadata = (subscription.metadata || {}) as Record<string, string>
+          userId = metadata.supabase_user_id || null
+        }
+
+        if (!userId) {
+          console.error(
+            `[stripe] subscription.deleted: could not resolve user for sub ${subscriptionId}`
+          )
+          break
+        }
 
         // Downgrade to free
         await supabase

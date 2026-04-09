@@ -1,3 +1,4 @@
+-- Originally: 00000000000007_init.sql | Feature: project reminders
 -- ============================================================
 -- PAM Phase 3C — Project Reminders
 -- Safe to run multiple times (all IF NOT EXISTS)

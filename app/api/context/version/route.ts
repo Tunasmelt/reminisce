@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
+import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess, isUserBanned } from '@/lib/supabase'
 import { diff_match_patch } from 'diff-match-patch'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
   try {
@@ -10,6 +12,9 @@ export async function POST(req: Request) {
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await clientSupabase.auth.getUser(token)
     if (!user || authError) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    if (await isUserBanned(user.id))
+      return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
 
     const { projectId, filePath, content } = await req.json()
     if (!projectId || !filePath || content === undefined) {

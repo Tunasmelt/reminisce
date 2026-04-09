@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
 import { callAI } from '@/lib/ai-client'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get('authorization')

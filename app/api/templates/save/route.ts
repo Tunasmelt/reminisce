@@ -2,11 +2,22 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies })
   const { data: { session } } = await supabase.auth.getSession()
   
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Check ban status
+  const { data: plan } = await supabase
+    .from('user_plans')
+    .select('banned_at')
+    .eq('user_id', session.user.id)
+    .single()
+  if (plan?.banned_at)
+    return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
 
   const { id, title, content, tags, category } = await req.json()
 

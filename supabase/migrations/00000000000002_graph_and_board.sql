@@ -1,3 +1,4 @@
+-- Originally: 00000000000002_init.sql | Feature: graph and board
 -- ============================================================
 -- REMINISCE V2 — GRAPH & BOARD SCHEMA PATCH
 -- Run in: Supabase → SQL Editor

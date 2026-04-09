@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess } from '@/lib/supabase'
+import { getServiceSupabase, supabase as clientSupabase, verifyProjectAccess, isUserBanned } from '@/lib/supabase'
+
+export const dynamic = 'force-dynamic'
 
 // GET /api/pam/threads?projectId=xxx
 // Returns all non-archived threads for a project, newest first.
@@ -28,6 +30,7 @@ export async function GET(req: Request) {
       .from('pam_threads')
       .select('id, title, model_used, provider_used, message_count, last_message_at, created_at')
       .eq('project_id', projectId)
+      .eq('user_id', user.id)
       .eq('archived', false)
       .order('last_message_at', { ascending: false })
       .limit(50)
@@ -53,6 +56,9 @@ export async function POST(req: Request) {
       await clientSupabase.auth.getUser(token)
     if (!user || authError)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    if (await isUserBanned(user.id))
+      return NextResponse.json({ error: 'Account suspended' }, { status: 403 })
 
     const { projectId, model, provider } = await req.json()
     if (!projectId)

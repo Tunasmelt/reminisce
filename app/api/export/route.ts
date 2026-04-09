@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import JSZip from 'jszip'
 import { getServiceSupabase, supabase as clientSupabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: Request) {
   try {
     // ── Auth ─────────────────────────────────────────────────────────────────
