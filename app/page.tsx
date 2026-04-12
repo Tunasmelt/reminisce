@@ -134,11 +134,13 @@ function ThreeDCard({
       style={{
         transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
         transition: hovered
-          ? 'transform 0.1s ease'
-          : 'transform 0.5s cubic-bezier(0.23,1,0.32,1)',
+          ? 'transform 0.1s ease, border-color 0.3s ease, box-shadow 0.3s ease'
+          : 'transform 0.5s cubic-bezier(0.23,1,0.32,1), border-color 0.5s ease, box-shadow 0.5s ease',
         position: 'relative',
         overflow: 'hidden',
+        boxShadow: hovered ? `0 20px 48px rgba(0,0,0,0.5), 0 0 24px ${hexToRgba(style?.borderColor as string || '#fff', 0.15)}` : 'none',
         ...style,
+        borderColor: hovered ? hexToRgba(style?.borderColor as string || '#fff', 0.5) : style?.borderColor,
       }}
     >
       {/* Shimmer on hover */}
@@ -377,8 +379,8 @@ export default function Home() {
     { fi: 6,  col: '9 / 13', row: '4 / 5' },  // Graph — small
     { fi: 7,  col: '1 / 5',  row: '5 / 6' },  // PAM — small
     { fi: 8,  col: '5 / 9',  row: '5 / 6' },  // Prompt Library — small
-    { fi: 9,  col: '9 / 11', row: '5 / 6' },  // API Lab — small
-    { fi: 10, col: '11 / 13',row: '5 / 6' },  // Collaboration — small
+    { fi: 9,  col: '9 / 13', row: '5 / 6' },  // API Lab — medium (now 4 col)
+    { fi: 10, col: '1 / 13', row: '6 / 7' },  // Collaboration — wide bottom
   ]
 
   return (
@@ -673,23 +675,25 @@ export default function Home() {
                 const Icon = f.icon
                 return (
                   <ThreeDCard key={i} style={{
-                    padding: '28px', borderRadius: 20,
-                    background: 'rgba(255,255,255,0.025)',
-                    border: '1px solid rgba(255,255,255,0.07)',
+                    padding: '32px 28px', borderRadius: 24,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid',
+                    borderColor: 'rgba(255,255,255,0.08)',
+                    backdropFilter: 'blur(12px)',
                   }}>
                     <div style={{
-                      width: 44, height: 44, borderRadius: 12,
-                      background: hexToRgba(ac, 0.1),
-                      border: `1px solid ${hexToRgba(ac, 0.2)}`,
+                      width: 48, height: 48, borderRadius: 14,
+                      background: hexToRgba(ac, 0.12),
+                      border: `1px solid ${hexToRgba(ac, 0.25)}`,
                       display: 'flex', alignItems: 'center',
                       justifyContent: 'center', marginBottom: 16,
                     }}>
                       <Icon size={20} color={ac}/>
                     </div>
                     <div style={{
-                      fontSize: 9, fontWeight: 800, letterSpacing: '0.12em',
+                      fontSize: 10, fontWeight: 800, letterSpacing: '0.15em',
                       textTransform: 'uppercase' as const,
-                      color: hexToRgba(ac, 0.65), marginBottom: 6,
+                      color: ac, marginBottom: 8,
                     }}>{f.tag}</div>
                     <h3 style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 8 }}>{f.title}</h3>
                     <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
@@ -701,8 +705,8 @@ export default function Home() {
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(12, 1fr)',
-              gridAutoRows: '180px',
-              gap: 14,
+              gridAutoRows: '200px',
+              gap: 16,
             }}>
               {bentoLayout.map(({ fi, col, row }) => {
                 const f = features[fi]
@@ -718,12 +722,14 @@ export default function Home() {
                     className={`sr d${(fi % 3) + 1}`}
                     style={{
                       gridColumn: col, gridRow: row,
-                      minHeight: isLarge ? 360 : isMed ? 180 : 180,
+                      minHeight: isLarge ? 416 : 200,
                       padding,
                       background: 'rgba(255,255,255,0.025)',
-                      border: '1px solid rgba(255,255,255,0.07)',
+                      border: '1px solid',
+                      borderColor: 'rgba(255,255,255,0.07)',
                       borderRadius: radius,
                       display: 'flex', flexDirection: 'column',
+                      backdropFilter: 'blur(12px)',
                     }}
                     onMouseEnter={() => {}}
                     onMouseLeave={() => {}}
@@ -778,9 +784,9 @@ export default function Home() {
                         <Icon size={isLarge ? 24 : 19} color={ac}/>
                       </div>
                       <div style={{
-                        fontSize: 9, fontWeight: 800, letterSpacing: '0.12em',
+                        fontSize: 10, fontWeight: 800, letterSpacing: '0.15em',
                         textTransform: 'uppercase' as const,
-                        color: hexToRgba(ac, 0.65), marginBottom: 6,
+                        color: ac, marginBottom: 10,
                       }}>{f.tag}</div>
                       <h3 style={{
                         fontSize: isLarge ? 24 : isMed ? 18 : 14,

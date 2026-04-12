@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useTheme } from '@/hooks/useTheme'
 import { Plus, GitBranch, X, ChevronDown, LayoutGrid } from 'lucide-react'
@@ -41,7 +41,21 @@ export default function BoardPage() {
   } = useProjectData(projectId)
 
   // ── UI state ───────────────────────────────────────────
-  const [filterPhaseId, setFilterPhaseId] = useState<string>('ALL')
+  const BOARD_PREFS_KEY = `reminisce_board_prefs_${projectId}`
+  const getBoardPrefs = () => {
+    if (typeof window === 'undefined') return { filterPhaseId: 'ALL', groupByPhase: false }
+    try { return JSON.parse(localStorage.getItem(BOARD_PREFS_KEY) || '{}') } catch { return {} }
+  }
+  const prefs = getBoardPrefs()
+  const [filterPhaseId, setFilterPhaseId] = useState<string>(prefs.filterPhaseId ?? 'ALL')
+  const [groupByPhase, setGroupByPhase] = useState<boolean>(prefs.groupByPhase ?? false)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOARD_PREFS_KEY, JSON.stringify({ filterPhaseId, groupByPhase }))
+    } catch { /* non-fatal */ }
+  }, [filterPhaseId, groupByPhase, BOARD_PREFS_KEY])
+
   const [showPhaseFilter, setShowPhaseFilter] = useState(false)
 
   // Detail panel
@@ -59,8 +73,6 @@ export default function BoardPage() {
   const [quickAddName, setQuickAddName] = useState('')
   const [quickAddPhaseId, setQuickAddPhaseId] = useState('')
   const [quickAddSaving, setQuickAddSaving] = useState(false)
-
-  const [groupByPhase, setGroupByPhase] = useState(false)
 
   // ── Drag state (native HTML5 DnD) ─────────────────────
   const dragFeatureId = useRef<string | null>(null)

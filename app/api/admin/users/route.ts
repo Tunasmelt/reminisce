@@ -63,21 +63,36 @@ export async function GET(req: Request) {
     (wallets || []).map(w => [w.user_id, w])
   )
 
-  // Fetch real emails from auth.users via service role admin API
-  // The Supabase JS client with service role can query auth.users
-  const { data: authUsers } = await sb.auth.admin.listUsers({
-    perPage: limit,
-    page,
-  })
-
+  // Fetch emails only for the actual user IDs we have
+  // This is more efficient than paginating auth users separately
   const emailMap: Record<string, string> = {}
   const lastSignInMap: Record<string, string | null> = {}
 
-  if (authUsers?.users) {
-    authUsers.users.forEach(u => {
-      emailMap[u.id] = u.email ?? 'no-email'
-      lastSignInMap[u.id] = u.last_sign_in_at ?? null
-    })
+  if (userIds.length > 0) {
+    // listUsers doesn't support filtering by ID, so fetch all and filter
+    // For small user counts (< 1000) this is fine
+    let page_ = 1
+    let done = false
+    while (!done) {
+      const { data: authBatch } = await sb.auth.admin.listUsers({
+        perPage: 100,
+        page: page_,
+      })
+      if (!authBatch?.users || authBatch.users.length === 0) {
+        done = true
+        break
+      }
+      authBatch.users.forEach(u => {
+        if (userIds.includes(u.id)) {
+          emailMap[u.id] = u.email ?? 'no-email'
+          lastSignInMap[u.id] = u.last_sign_in_at ?? null
+        }
+      })
+      // If we've found all users, stop early
+      if (Object.keys(emailMap).length >= userIds.length) done = true
+      page_++
+      if (page_ > 20) done = true // safety limit (max 2000 users)
+    }
   }
 
   // Fetch project counts — join through workspaces to get owner_id
@@ -87,7 +102,7 @@ export async function GET(req: Request) {
 
   const pCounts: Record<string, number> = {}
   if (pData) {
-    pData.forEach((p: any) => {
+    (pData as unknown as Array<{ workspaces: { owner_id: string } }>).forEach((p) => {
       const oid = p.workspaces?.owner_id
       if (oid) pCounts[oid] = (pCounts[oid] || 0) + 1
     })

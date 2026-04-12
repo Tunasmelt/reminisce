@@ -189,3 +189,24 @@ export type GraphNodeType =
   | 'projectNode'
   | 'phaseNode'
   | 'featureNode'
+
+import type { Node, Edge } from '@xyflow/react'
+
+export type RFPhaseNode = Node<PhaseNodeData, 'phaseNode'>
+export type RFFeatureNode = Node<FeatureNodeData, 'featureNode'>
+export type RFProjectNode = Node<ProjectNodeData, 'projectNode'>
+export type RFAnnotationNode = Node<{
+  id: string
+  text: string
+  kind: 'note' | 'bug' | 'todo' | 'comment'
+  color: string
+  bg: string
+  border: string
+  emoji: string
+  projectId: string
+  onUpdate: (id: string, text: string) => void
+  onDelete: (id: string) => void
+}, 'annotationNode'>
+
+export type AnyRFNode = RFPhaseNode | RFFeatureNode | RFProjectNode | RFAnnotationNode
+export type AnyRFEdge = Edge

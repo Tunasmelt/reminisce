@@ -87,10 +87,22 @@ export interface UseProjectDataReturn {
 export function useProjectData(
   projectId: string
 ): UseProjectDataReturn {
-  const [project, setProject] = useState<Project | null>(null)
-  const [phases, setPhases] = useState<Phase[]>([])
-  const [features, setFeatures] = useState<Feature[]>([])
-  const [loading, setLoading] = useState(true)
+  const CACHE_KEY = `reminisce_project_cache_${projectId}`
+
+  const getCached = () => {
+    if (typeof window === 'undefined') return null
+    try {
+      const raw = localStorage.getItem(CACHE_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  }
+
+  const cached = getCached()
+
+  const [project, setProject] = useState<Project | null>(cached?.project ?? null)
+  const [phases, setPhases] = useState<Phase[]>(cached?.phases ?? [])
+  const [features, setFeatures] = useState<Feature[]>(cached?.features ?? [])
+  const [loading, setLoading] = useState(!cached)  // only show loading if no cache
 
   // ── Fetch ──────────────────────────────────────────────
 
@@ -128,6 +140,16 @@ export function useProjectData(
       setProject(projData as Project)
       setPhases((phasesData ?? []) as Phase[])
       setFeatures((featuresData ?? []) as Feature[])
+
+      // Save to localStorage cache
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          project: projData,
+          phases: phasesData ?? [],
+          features: featuresData ?? [],
+          cachedAt: Date.now(),
+        }))
+      } catch { /* non-fatal */ }
     } catch (err) {
       console.error('[useProjectData] fetch error:', err)
       toast.error('Failed to load project data')

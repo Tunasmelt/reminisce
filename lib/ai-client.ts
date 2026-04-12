@@ -83,6 +83,8 @@ const USER_RATE_LIMITS: Record<string, { rpm: number; rpd: number }> = {
   'meta-llama/llama-4-scout-17b-16e-instruct':     { rpm: 3, rpd: 30   },
   'moonshotai/kimi-k2-instruct-0905':              { rpm: 3, rpd: 30   },
   'qwen/qwen3-32b':                                { rpm: 3, rpd: 30   },
+  'mixtral-8x7b-32768':                          { rpm: 2, rpd: 50   },
+  'qwen-2.5-coder-32b':                          { rpm: 3, rpd: 80   },
   // Cerebras — free tier (1M tokens/day org, no per-req daily cap)
   'llama3.1-8b':                                   { rpm: 5, rpd: 9999 },
   'llama-3.3-70b':                                 { rpm: 3, rpd: 9999 },
@@ -97,6 +99,7 @@ const USER_RATE_LIMITS: Record<string, { rpm: number; rpd: number }> = {
   // Gemini — free tier
   'gemini-2.5-flash-lite':                        { rpm: 3, rpd: 100  },
   'gemini-2.5-flash':                             { rpm: 2, rpd: 25   },
+  'gemini-1.5-flash-lite':                        { rpm: 5, rpd: 200  },
   // Mistral — Experiment plan (2 RPM org-wide)
   'open-mistral-7b':                              { rpm: 1, rpd: 50   },
   'mistral-small-latest':                         { rpm: 1, rpd: 50   },
@@ -110,6 +113,9 @@ const USER_RATE_LIMITS: Record<string, { rpm: number; rpd: number }> = {
   'gpt-4o':                                       { rpm: 5,  rpd: 50  },
   'gemini-2.5-pro':                               { rpm: 3,  rpd: 50  },
   'mistral-large-latest':                         { rpm: 5,  rpd: 100 },
+  'deepseek/deepseek-chat:free':                  { rpm: 3,  rpd: 50  },
+  'nousresearch/hermes-3-llama-3.1-405b:free':    { rpm: 1,  rpd: 20  },
+  'liquid/lfm-40b:free':                          { rpm: 5,  rpd: 200 },
 }
 
 async function checkUserRateLimit(

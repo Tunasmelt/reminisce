@@ -9,73 +9,63 @@ export const MODEL_COSTS: Record<string, {
   amount: number
   tier: 'free' | 'pro'
 }> = {
-  // ── FREE TIER — provider absorbs cost, coins deducted ─────────────────
+  // ── FREE TIER (Groq) — fastest, most reliable free inference ──────────
+  'llama-3.1-8b-instant':              { currency: 'coins', amount: 1, tier: 'free' },
+  'llama-3.3-70b-versatile':           { currency: 'coins', amount: 2, tier: 'free' },
+  'gemma2-9b-it':                      { currency: 'coins', amount: 1, tier: 'free' },
+  'llama-3.2-3b-preview':              { currency: 'coins', amount: 1, tier: 'free' },
+  'mixtral-8x7b-32768':                { currency: 'coins', amount: 2, tier: 'free' },
+  'qwen-2.5-coder-32b':                { currency: 'coins', amount: 1, tier: 'free' },
 
-  // Groq
-  'llama-3.1-8b-instant':                        { currency: 'coins', amount: 1, tier: 'free' },
-  'llama-3.3-70b-versatile':                      { currency: 'coins', amount: 2, tier: 'free' },
-  'meta-llama/llama-4-scout-17b-16e-instruct':   { currency: 'coins', amount: 2, tier: 'free' },
-  'moonshotai/kimi-k2-instruct-0905':             { currency: 'coins', amount: 2, tier: 'free' },
-  'qwen/qwen3-32b':                               { currency: 'coins', amount: 2, tier: 'free' },
+  // ── FREE TIER (Cerebras) — ultra-fast inference ───────────────────────
+  'llama3.1-8b':                       { currency: 'coins', amount: 1, tier: 'free' },
+  'llama-3.3-70b':                     { currency: 'coins', amount: 2, tier: 'free' },
 
-  // Cerebras
-  'llama3.1-8b':                                  { currency: 'coins', amount: 1, tier: 'free' },
-  'llama-3.3-70b':                                { currency: 'coins', amount: 2, tier: 'free' },
-  'llama-4-scout-17b-16e-instruct':               { currency: 'coins', amount: 2, tier: 'free' },
-  'qwen-3-32b':                                   { currency: 'coins', amount: 2, tier: 'free' },
+  // ── FREE TIER (Gemini) — Google's free quota ──────────────────────────
+  'gemini-2.0-flash':                  { currency: 'coins', amount: 2, tier: 'free' },
+  'gemini-1.5-flash':                  { currency: 'coins', amount: 1, tier: 'free' },
+  'gemini-1.5-flash-8b':               { currency: 'coins', amount: 1, tier: 'free' },
+  'gemini-1.5-flash-lite':             { currency: 'coins', amount: 1, tier: 'free' },
 
-  // SambaNova
-  'Meta-Llama-3.1-8B-Instruct':                  { currency: 'coins', amount: 1, tier: 'free' },
-  'Meta-Llama-3.1-70B-Instruct':                 { currency: 'coins', amount: 2, tier: 'free' },
-  'Meta-Llama-3.1-405B-Instruct':                { currency: 'coins', amount: 3, tier: 'free' },
-  'Meta-Llama-3.3-70B-Instruct':                 { currency: 'coins', amount: 2, tier: 'free' },
-  'Qwen2.5-72B-Instruct':                        { currency: 'coins', amount: 2, tier: 'free' },
+  // ── FREE TIER (Mistral) — Mistral free API ───────────────────────────
+  'open-mistral-7b':                   { currency: 'coins', amount: 1, tier: 'free' },
+  'mistral-small-latest':              { currency: 'coins', amount: 2, tier: 'free' },
 
-  // Gemini free
-  'gemini-2.5-flash-lite':                       { currency: 'coins', amount: 1, tier: 'free' },
-
-  // Mistral Experiment plan
-  'open-mistral-7b':                             { currency: 'coins', amount: 1, tier: 'free' },
-  'mistral-small-latest':                        { currency: 'coins', amount: 2, tier: 'free' },
-  'codestral-latest':                            { currency: 'coins', amount: 2, tier: 'free' },
-
-  // Kimi (Moonshot) — updated to current model IDs
-  'kimi-k2.5':                                   { currency: 'coins', amount: 2, tier: 'free' },
-  // Legacy Kimi model IDs kept for backward compat with existing sessions
-  'moonshot-v1-8k':                              { currency: 'coins', amount: 1, tier: 'free' },
-  'moonshot-v1-32k':                             { currency: 'coins', amount: 2, tier: 'free' },
-  'moonshot-v1-128k':                            { currency: 'coins', amount: 3, tier: 'free' },
-
-  // OpenRouter free models (kept as fallback)
-  'meta-llama/llama-3.3-70b-instruct:free':      { currency: 'coins', amount: 1, tier: 'free' },
-  'google/gemma-3-27b-it:free':                  { currency: 'coins', amount: 1, tier: 'free' },
-  'deepseek/deepseek-r1:free':                   { currency: 'coins', amount: 1, tier: 'free' },
+  // ── FREE TIER (OpenRouter confirmed working) ──────────────────────────
+  // Only models confirmed available as of April 2026
+  'meta-llama/llama-3.3-70b-instruct:free':          { currency: 'coins', amount: 2, tier: 'free' },
+  'meta-llama/llama-3.1-8b-instruct:free':           { currency: 'coins', amount: 1, tier: 'free' },
+  'google/gemma-3-12b-it:free':                      { currency: 'coins', amount: 1, tier: 'free' },
   'mistralai/mistral-7b-instruct:free':          { currency: 'coins', amount: 1, tier: 'free' },
-  'mistralai/mistral-small-3.1-24b-instruct:free': { currency: 'coins', amount: 1, tier: 'free' },
-  'nvidia/llama-3.1-nemotron-super-49b-v1:free': { currency: 'coins', amount: 1, tier: 'free' },
-  'nvidia/llama-nemotron-nano-8b-instruct:free':  { currency: 'coins', amount: 1, tier: 'free' },
+  'qwen/qwen-2.5-72b-instruct:free':                 { currency: 'coins', amount: 2, tier: 'free' },
+  'microsoft/phi-3-mini-128k-instruct:free':         { currency: 'coins', amount: 1, tier: 'free' },
+  'deepseek/deepseek-chat:free':                     { currency: 'coins', amount: 2, tier: 'free' },
+  'nousresearch/hermes-3-llama-3.1-405b:free':       { currency: 'coins', amount: 2, tier: 'free' },
+  'liquid/lfm-40b:free':                             { currency: 'coins', amount: 1, tier: 'free' },
 
-  // ── PRO TIER — your API keys billed per run, gems deducted ─────────────
+  // ── PRO TIER (Anthropic) ─────────────────────────────────────────────
+  'claude-haiku-4-5':                  { currency: 'gems', amount: 1, tier: 'pro' },
+  'claude-3-5-haiku-20241022':         { currency: 'gems', amount: 1, tier: 'pro' },
+  'claude-sonnet-4-20250514':          { currency: 'gems', amount: 3, tier: 'pro' },
+  'claude-3-5-sonnet-20241022':        { currency: 'gems', amount: 3, tier: 'pro' },
 
-  // Anthropic
-  'claude-haiku-4-5':                            { currency: 'gems',  amount: 1, tier: 'pro' },
-  'claude-sonnet-4-6-20250514':                  { currency: 'gems',  amount: 3, tier: 'pro' },
+  // ── PRO TIER (OpenAI) ────────────────────────────────────────────────
+  'gpt-4o-mini':                       { currency: 'gems', amount: 1, tier: 'pro' },
+  'gpt-4o':                            { currency: 'gems', amount: 3, tier: 'pro' },
+  'gpt-4o-mini-2024-07-18':            { currency: 'gems', amount: 1, tier: 'pro' },
 
-  // OpenAI
-  'gpt-4o-mini':                                 { currency: 'gems',  amount: 1, tier: 'pro' },
-  'gpt-4o':                                      { currency: 'gems',  amount: 3, tier: 'pro' },
+  // ── PRO TIER (Gemini paid) ───────────────────────────────────────────
+  'gemini-2.5-flash':                  { currency: 'gems', amount: 2, tier: 'pro' },
+  'gemini-2.5-pro':                    { currency: 'gems', amount: 4, tier: 'pro' },
+  'gemini-1.5-pro':                    { currency: 'gems', amount: 2, tier: 'pro' },
 
-  // Gemini paid
-  'gemini-2.5-pro':                              { currency: 'gems',  amount: 2, tier: 'pro' },
+  // ── PRO TIER (Mistral paid) ──────────────────────────────────────────
+  'mistral-large-latest':              { currency: 'gems', amount: 2, tier: 'pro' },
+  'codestral-latest':                  { currency: 'gems', amount: 2, tier: 'pro' },
 
-  // Mistral paid
-  'mistral-large-latest':                        { currency: 'gems',  amount: 2, tier: 'pro' },
-
-  // Gemini paid direct
-  'gemini-2.5-flash':                            { currency: 'gems',  amount: 1, tier: 'pro' },
-  // Legacy / backward compat — kept so existing agent runs don't error
-  'gemini-2.0-flash':                            { currency: 'gems',  amount: 1, tier: 'pro' },
-  'claude-sonnet-4-20250514':                    { currency: 'gems',  amount: 3, tier: 'pro' },
+  // ── PRO TIER (OpenRouter paid) ───────────────────────────────────────
+  'anthropic/claude-3-5-sonnet':       { currency: 'gems', amount: 3, tier: 'pro' },
+  'openai/gpt-4o':                     { currency: 'gems', amount: 3, tier: 'pro' },
 }
 
 // ─── PLAN HELPERS ─────────────────────────────

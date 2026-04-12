@@ -191,19 +191,50 @@ export async function DELETE(
   const targetUserId = params.id
 
   try {
-    // Standard cascade relies on DB foreign keys, but we'll do an explicit cleanup
-    // for safety in this admin route.
-    await Promise.all([
-      sb.from('user_plans').delete().eq('user_id', targetUserId),
-      sb.from('user_wallets').delete().eq('user_id', targetUserId),
-      sb.from('projects').delete().eq('workspaces.owner_id', targetUserId),
-    ])
+    // 1. Delete wallet_transactions (no cascade)
+    await sb.from('wallet_transactions').delete().eq('user_id', targetUserId)
 
-    // Log deletion before we lose context? No, it's done.
+    // 2. Delete pam_messages, pam_threads (no direct user cascade on messages)
+    await sb.from('pam_threads').delete().eq('user_id', targetUserId)
+
+    // 3. Delete user_wallets and user_plans
+    await sb.from('user_wallets').delete().eq('user_id', targetUserId)
+    await sb.from('user_plans').delete().eq('user_id', targetUserId)
+
+    // 4. Delete workspaces (cascades to projects, phases, features, contexts)
+    const { data: workspaces } = await sb
+      .from('workspaces')
+      .select('id')
+      .eq('owner_id', targetUserId)
+
+    if (workspaces && workspaces.length > 0) {
+      await sb
+        .from('workspaces')
+        .delete()
+        .in('id', workspaces.map(w => w.id))
+    }
+
+    // 5. Delete from Supabase Auth (removes login ability)
+    const { error: authErr } = await sb.auth.admin.deleteUser(targetUserId)
+    if (authErr) {
+      console.error('[Admin DELETE] Auth delete error:', authErr)
+      // Non-fatal — data is already cleaned up
+    }
+
+    // 6. Log the deletion
+    await sb.from('admin_logs').insert({
+      admin_id:    check.userId,
+      action:      'delete_user',
+      target_id:   targetUserId,
+      target_type: 'user',
+      payload:     { userId: targetUserId },
+      details:     { userId: targetUserId },
+    })
 
     return NextResponse.json({ ok: true, deleted: targetUserId })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
+    console.error('[Admin DELETE] Error:', err)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

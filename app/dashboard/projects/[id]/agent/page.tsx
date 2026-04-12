@@ -743,7 +743,11 @@ function PAMContent() {
   // ── State ──────────────────────────────────────────────────────────────────
   const [project,      setProject]      = useState<{ name: string; description: string | null } | null>(null)
   const [threads,      setThreads]      = useState<PamThread[]>([])
-  const [activeThread, setActiveThread] = useState<string | null>(null)
+  const THREAD_KEY = `reminisce_pam_thread_${projectId}`
+  const [activeThread, setActiveThread] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem(THREAD_KEY)
+  })
   const [messages,     setMessages]     = useState<PamMessage[]>([])
   const [phases,       setPhases]       = useState<Array<{ id: string; name: string; status: string }>>([])
   const [features,     setFeatures]     = useState<Array<{ id: string; name: string; status: string; type: string }>>([])
@@ -932,6 +936,7 @@ function PAMContent() {
 
   const selectThread = useCallback(async (threadId: string) => {
     setActiveThread(threadId)
+    localStorage.setItem(THREAD_KEY, threadId)
     setStreamText('')
     setPendingAction(null)
     await loadMessages(threadId)
@@ -1039,6 +1044,7 @@ function PAMContent() {
     // Create a fresh thread for the briefing
     const threadId = await createThread()
     setActiveThread(threadId)
+    localStorage.setItem(THREAD_KEY, threadId)
     setMessages([])
     setPendingAction(null)
     setStreamText('')
@@ -1123,6 +1129,7 @@ function PAMContent() {
     if (!threadId) {
       threadId = await createThread()
       setActiveThread(threadId)
+    localStorage.setItem(THREAD_KEY, threadId)
     }
 
     // Optimistic user message
@@ -1407,6 +1414,7 @@ function PAMContent() {
             }
             const id = await createThread()
             setActiveThread(id)
+    localStorage.setItem(THREAD_KEY, id)
             setMessages([])
             setPendingAction(null)
             setStreamText('')
@@ -1753,8 +1761,13 @@ function PAMContent() {
                     )}
 
                     {/* Content */}
+                    {!isUser && (
+                      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: hexToRgba(accent, 0.6), textTransform: 'uppercase', marginBottom: 6 }}>
+                        PAM
+                      </div>
+                    )}
                     <div
-                      className="prose prose-invert prose-sm max-w-none prose-code:text-[var(--accent-primary)] prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-pre:bg-white/5 prose-pre:border prose-pre:border-white/10 prose-code:before:content-none prose-code:after:content-none"
+                      className="prose prose-invert prose-sm max-w-none"
                       style={{ fontSize: 13, color: isUser ? '#fff' : 'rgba(255,255,255,0.88)', lineHeight: 1.75 }}
                     >
                       {isUser ? (
@@ -1777,7 +1790,101 @@ function PAMContent() {
                               <ScopeAlertBanner key={i} text={alert} />
                             ))}
                             {cleanContent && (
-                              <ReactMarkdown>{cleanContent}</ReactMarkdown>
+                              <ReactMarkdown
+                                components={{
+                                  // Headings with accent line
+                                  h1: ({ children }) => (
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 12, marginTop: 16, paddingBottom: 6, borderBottom: `1px solid ${hexToRgba(accent, 0.2)}` }}>
+                                      {children}
+                                    </div>
+                                  ),
+                                  h2: ({ children }) => (
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: accent, marginBottom: 8, marginTop: 14, letterSpacing: '0.02em' }}>
+                                      {children}
+                                    </div>
+                                  ),
+                                  h3: ({ children }) => (
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.7)', marginBottom: 6, marginTop: 10 }}>
+                                      {children}
+                                    </div>
+                                  ),
+                                  // Paragraphs with proper spacing
+                                  p: ({ children }) => (
+                                    <p style={{ margin: '0 0 10px', lineHeight: 1.75, color: 'rgba(255,255,255,0.82)', fontSize: 13 }}>
+                                      {children}
+                                    </p>
+                                  ),
+                                  // Bullet lists as styled cards
+                                  ul: ({ children }) => (
+                                    <ul style={{ margin: '6px 0 12px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                      {children}
+                                    </ul>
+                                  ),
+                                  li: ({ children }) => (
+                                    <li style={{
+                                      display: 'flex', alignItems: 'flex-start', gap: 8,
+                                      padding: '6px 10px',
+                                      background: 'rgba(255,255,255,0.03)',
+                                      borderRadius: 7, borderLeft: `2px solid ${hexToRgba(accent, 0.4)}`,
+                                      fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6,
+                                    }}>
+                                      <span style={{ color: accent, flexShrink: 0, marginTop: 2, fontSize: 8 }}>◆</span>
+                                      <span>{children}</span>
+                                    </li>
+                                  ),
+                                  // Ordered lists
+                                  ol: ({ children }) => (
+                                    <ol style={{ margin: '6px 0 12px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4, counterReset: 'pam-ol' }}>
+                                      {children}
+                                    </ol>
+                                  ),
+                                  // Bold as accent color
+                                  strong: ({ children }) => (
+                                    <strong style={{ color: '#fff', fontWeight: 700 }}>{children}</strong>
+                                  ),
+                                  // Inline code
+                                  code: ({ children, className }) => {
+                                    const isBlock = !!className
+                                    if (isBlock) return (
+                                      <pre style={{
+                                        background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 8, padding: '10px 14px', overflowX: 'auto',
+                                        fontSize: 11, fontFamily: 'monospace', color: '#7dd3fc',
+                                        margin: '8px 0 12px',
+                                      }}>
+                                        <code>{children}</code>
+                                      </pre>
+                                    )
+                                    return (
+                                      <code style={{
+                                        background: 'rgba(255,255,255,0.08)', borderRadius: 4,
+                                        padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
+                                        color: accent,
+                                      }}>
+                                        {children}
+                                      </code>
+                                    )
+                                  },
+                                  // Blockquotes as callouts
+                                  blockquote: ({ children }) => (
+                                    <blockquote style={{
+                                      margin: '8px 0', padding: '10px 14px',
+                                      background: hexToRgba(accent, 0.05),
+                                      borderLeft: `3px solid ${hexToRgba(accent, 0.5)}`,
+                                      borderRadius: '0 8px 8px 0',
+                                      color: 'rgba(255,255,255,0.7)', fontSize: 12, fontStyle: 'italic',
+                                    }}>
+                                      {children}
+                                    </blockquote>
+                                  ),
+                                  // Horizontal rule as section divider
+                                  hr: () => (
+                                    <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '14px 0' }}/>
+                                  ),
+                                }}
+                              >
+                                {cleanContent}
+                              </ReactMarkdown>
                             )}
                           </div>
                         )
@@ -1828,7 +1935,101 @@ function PAMContent() {
                         {alerts.map((a, i) => <ScopeAlertBanner key={i} text={a} />)}
                         {cleanStream && (
                           <div className="prose prose-invert prose-sm max-w-none">
-                            <ReactMarkdown>{cleanStream}</ReactMarkdown>
+                            <ReactMarkdown
+                              components={{
+                                // Headings with accent line
+                                h1: ({ children }) => (
+                                  <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 12, marginTop: 16, paddingBottom: 6, borderBottom: `1px solid ${hexToRgba(accent, 0.2)}` }}>
+                                    {children}
+                                  </div>
+                                ),
+                                h2: ({ children }) => (
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: accent, marginBottom: 8, marginTop: 14, letterSpacing: '0.02em' }}>
+                                    {children}
+                                  </div>
+                                ),
+                                h3: ({ children }) => (
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.7)', marginBottom: 6, marginTop: 10 }}>
+                                    {children}
+                                  </div>
+                                ),
+                                // Paragraphs with proper spacing
+                                p: ({ children }) => (
+                                  <p style={{ margin: '0 0 10px', lineHeight: 1.75, color: 'rgba(255,255,255,0.82)', fontSize: 13 }}>
+                                    {children}
+                                  </p>
+                                ),
+                                // Bullet lists as styled cards
+                                ul: ({ children }) => (
+                                  <ul style={{ margin: '6px 0 12px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    {children}
+                                  </ul>
+                                ),
+                                li: ({ children }) => (
+                                  <li style={{
+                                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                                    padding: '6px 10px',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    borderRadius: 7, borderLeft: `2px solid ${hexToRgba(accent, 0.4)}`,
+                                    fontSize: 12, color: 'rgba(255,255,255,0.8)', lineHeight: 1.6,
+                                  }}>
+                                    <span style={{ color: accent, flexShrink: 0, marginTop: 2, fontSize: 8 }}>◆</span>
+                                    <span>{children}</span>
+                                  </li>
+                                ),
+                                // Ordered lists
+                                ol: ({ children }) => (
+                                  <ol style={{ margin: '6px 0 12px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4, counterReset: 'pam-ol' }}>
+                                    {children}
+                                  </ol>
+                                ),
+                                // Bold as accent color
+                                strong: ({ children }) => (
+                                  <strong style={{ color: '#fff', fontWeight: 700 }}>{children}</strong>
+                                ),
+                                // Inline code
+                                code: ({ children, className }) => {
+                                  const isBlock = !!className
+                                  if (isBlock) return (
+                                    <pre style={{
+                                      background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)',
+                                      borderRadius: 8, padding: '10px 14px', overflowX: 'auto',
+                                      fontSize: 11, fontFamily: 'monospace', color: '#7dd3fc',
+                                      margin: '8px 0 12px',
+                                    }}>
+                                      <code>{children}</code>
+                                    </pre>
+                                  )
+                                  return (
+                                    <code style={{
+                                      background: 'rgba(255,255,255,0.08)', borderRadius: 4,
+                                      padding: '1px 6px', fontSize: 11, fontFamily: 'monospace',
+                                      color: accent,
+                                    }}>
+                                      {children}
+                                    </code>
+                                  )
+                                },
+                                // Blockquotes as callouts
+                                blockquote: ({ children }) => (
+                                  <blockquote style={{
+                                    margin: '8px 0', padding: '10px 14px',
+                                    background: hexToRgba(accent, 0.05),
+                                    borderLeft: `3px solid ${hexToRgba(accent, 0.5)}`,
+                                    borderRadius: '0 8px 8px 0',
+                                    color: 'rgba(255,255,255,0.7)', fontSize: 12, fontStyle: 'italic',
+                                  }}>
+                                    {children}
+                                  </blockquote>
+                                ),
+                                // Horizontal rule as section divider
+                                hr: () => (
+                                  <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '14px 0' }}/>
+                                ),
+                              }}
+                            >
+                              {cleanStream}
+                            </ReactMarkdown>
                           </div>
                         )}
                       </div>

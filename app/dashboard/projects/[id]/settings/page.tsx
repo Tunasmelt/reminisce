@@ -62,7 +62,6 @@ export default function SettingsPage() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelConfirm, setCancelConfirm] = useState(false)
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('active')
-  const [subId,              setSubId]              = useState<string | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -103,7 +102,6 @@ export default function SettingsPage() {
         if (planData) {
           setUserPlan(planData.plan as 'free' | 'pro')
           setSubscriptionStatus(planData.status ?? 'active')
-          setSubId(planData.stripe_subscription_id ?? null)
         }
       }
       await fetchKeys()

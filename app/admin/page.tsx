@@ -12,6 +12,7 @@ import {
   Database, MessageSquare, Wand2, Bot, Coins,
   CheckCircle, XCircle, Clock, Eye, AlertTriangle,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -196,7 +197,7 @@ export default function AdminPage() {
   const [models,     setModels]     = useState<Model[]>([])
   const [logs,       setLogs]       = useState<AuditLog[]>([])
   const [userSearch, setUserSearch] = useState('')
-  const [userPage,   setUserPage]   = useState(0)
+  const [userPage,   setUserPage]   = useState(1)
   const [userTotal,  setUserTotal]  = useState(0)
   const [loading,    setLoading]    = useState(false)
 
@@ -264,10 +265,26 @@ export default function AdminPage() {
     setLogs(data.logs ?? [])
   }, [token, headers])
 
-  useEffect(() => { if (token) { loadStats(); loadModels() } }, [token, loadStats, loadModels])
-  useEffect(() => { if (token && tab === 'users') loadUsers() }, [token, tab, userPage, loadUsers])
-  useEffect(() => { if (token && tab === 'logs')  loadLogs()  }, [token, tab, loadLogs])
-  useEffect(() => { if (token && tab === 'activity') loadStats() }, [token, tab, loadStats])
+  useEffect(() => {
+    if (!token) return
+    loadStats()
+    loadModels()
+  }, [token, loadStats, loadModels])
+
+  useEffect(() => {
+    if (!token || tab !== 'users') return
+    loadUsers()
+  }, [token, tab, userPage, loadUsers])
+
+  useEffect(() => {
+    if (!token || tab !== 'logs') return
+    loadLogs()
+  }, [token, tab, loadLogs])
+
+  useEffect(() => {
+    if (!token || tab !== 'activity') return
+    loadStats()
+  }, [token, tab, loadStats])
 
   // When viewUser changes, fetch their recent transactions
   useEffect(() => {
@@ -282,7 +299,7 @@ export default function AdminPage() {
 
   const handleSearchChange = (v: string) => {
     setUserSearch(v)
-    setUserPage(0)
+    setUserPage(1)
     clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(() => loadUsers(), 400)
   }
@@ -290,43 +307,82 @@ export default function AdminPage() {
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   const userAction = async (userId: string, action: string, extra?: Record<string, unknown>) => {
-    await fetch(`/api/admin/users/${userId}`, {
-      method: 'PATCH', headers: headers(),
-      body: JSON.stringify({ action, ...extra }),
-    })
-    loadUsers(); loadStats()
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PATCH', headers: headers(),
+        body: JSON.stringify({ action, ...extra }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        toast.error(data.error || `Action failed (${res.status})`)
+        return
+      }
+      toast.success(`Action: ${action.replace(/_/g,' ')} applied`)
+    } catch {
+      toast.error('Network error — check console')
+      return
+    }
+    await Promise.all([loadUsers(), loadStats()])
   }
 
   const deleteUser = async (userId: string) => {
-    await fetch(`/api/admin/users/${userId}`, { method: 'DELETE', headers: headers() })
-    setConfirmDelete(null); loadUsers(); loadStats()
+    const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE', headers: headers() })
+    setConfirmDelete(null)
+    if (res.ok) {
+      toast.success('User deleted')
+    } else {
+      const d = await res.json().catch(() => ({}))
+      toast.error(d.error || 'Delete failed')
+    }
+    await Promise.all([loadUsers(), loadStats()])
   }
 
   const saveModel = async () => {
     if (!modelModal) return
-    if (modelModal.id) {
-      await fetch(`/api/admin/models/${modelModal.id}`, {
-        method: 'PATCH', headers: headers(), body: JSON.stringify(modelModal),
+    try {
+      const url = modelModal.id ? `/api/admin/models/${modelModal.id}` : '/api/admin/models'
+      const method = modelModal.id ? 'PATCH' : 'POST'
+      // Ensure model_name is set (API requires it for POST)
+      const payload = {
+        ...modelModal,
+        model_name: modelModal.model_name || modelModal.label || modelModal.model_id,
+      }
+      const res = await fetch(url, {
+        method, headers: headers(), body: JSON.stringify(payload),
       })
-    } else {
-      await fetch('/api/admin/models', {
-        method: 'POST', headers: headers(), body: JSON.stringify(modelModal),
-      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        toast.error(data.error || 'Model save failed')
+        return
+      }
+      toast.success(modelModal.id ? 'Model updated' : 'Model added')
+    } catch {
+      toast.error('Network error')
+      return
     }
-    setModelModal(null); loadModels()
+    setModelModal(null)
+    await loadModels()
   }
 
   const toggleModel = async (m: Model) => {
-    await fetch(`/api/admin/models/${m.id}`, {
+    const res = await fetch(`/api/admin/models/${m.id}`, {
       method: 'PATCH', headers: headers(),
       body: JSON.stringify({ enabled: !m.enabled }),
     })
-    loadModels()
+    if (res.ok) {
+      toast.success(`Model ${!m.enabled ? 'enabled' : 'disabled'}`)
+    } else {
+      toast.error('Toggle failed')
+    }
+    await loadModels()
   }
 
   const deleteModel = async (id: string) => {
-    await fetch(`/api/admin/models/${id}`, { method: 'DELETE', headers: headers() })
-    setConfirmDelete(null); loadModels()
+    const res = await fetch(`/api/admin/models/${id}`, { method: 'DELETE', headers: headers() })
+    setConfirmDelete(null)
+    if (res.ok) toast.success('Model deleted')
+    else toast.error('Delete failed')
+    await loadModels()
   }
 
   // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -607,8 +663,8 @@ export default function AdminPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>{userTotal.toLocaleString()} users total</span>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button onClick={() => setUserPage(p => Math.max(0, p-1))} disabled={userPage === 0} style={btn(undefined, true)}><ChevronLeft size={12}/></button>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Page {userPage + 1}</span>
+                  <button onClick={() => setUserPage(p => Math.max(1, p-1))} disabled={userPage === 1} style={btn(undefined, true)}><ChevronLeft size={12}/></button>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Page {userPage}</span>
                   <button onClick={() => setUserPage(p => p+1)} style={btn(undefined, true)}><ChevronRight size={12}/></button>
                 </div>
               </div>

@@ -177,9 +177,27 @@ export default function DashboardPage() {
 
   const handleCreateWorkspace = async () => {
     if (!newWorkspaceName.trim()) return
-    const { error } = await supabase.from('workspaces').insert({ name: newWorkspaceName, owner_id: user?.id })
-    if (error) toast.error(error.message)
-    else { toast.success('Group created'); setNewWorkspaceName(''); setIsWorkspaceOpen(false); fetchData() }
+    const { error } = await supabase.from('workspaces').insert({
+      name: newWorkspaceName,
+      owner_id: user?.id
+    })
+    if (error) {
+      toast.error(error.message)
+    } else {
+      toast.success('Group created')
+      // Refetch workspaces and select the new one
+      const { data: newWs } = await supabase
+        .from('workspaces')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (newWs) {
+        setWorkspaces(newWs)
+        if (newWs.length > 0) setProjWS(newWs[0].id)
+      }
+      setNewWorkspaceName('')
+      setIsWorkspaceOpen(false)
+      fetchData() // Refresh projects and stats
+    }
   }
 
   const handleDeleteWorkspace = (workspaceId: string, workspaceName: string) => {
@@ -235,7 +253,10 @@ export default function DashboardPage() {
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      return toast.error(body?.error || 'Failed to create project')
+      if (body?.code === 'PROJECT_LIMIT_REACHED') {
+        return toast.error(`Project limit reached (${body.current}/${body.limit}). Upgrade to Pro for unlimited projects.`)
+      }
+      return toast.error(body?.error || `Failed to create project (${res.status})`)
     }
     const { project: inserted } = await res.json()
     if (modalDirHandle && inserted?.id) {
